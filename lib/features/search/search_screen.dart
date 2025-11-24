@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,15 +15,28 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _queryController = TextEditingController();
+  Timer? _debounce;
+  static const _minChars = 4;
+  static const _debounceDuration = Duration(milliseconds: 350);
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _queryController.dispose();
     super.dispose();
   }
 
   Future<void> _runSearch() async {
     await ref.read(searchControllerProvider.notifier).search(_queryController.text);
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    if (value.trim().length < _minChars) {
+      ref.read(searchControllerProvider.notifier).search('');
+      return;
+    }
+    _debounce = Timer(_debounceDuration, _runSearch);
   }
 
   @override
@@ -38,6 +53,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               controller: _queryController,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _runSearch(),
+              onChanged: _onQueryChanged,
               decoration: InputDecoration(
                 labelText: 'Search games',
                 hintText: 'Enter a title',
