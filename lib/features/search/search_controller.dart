@@ -14,9 +14,15 @@ class SearchController extends StateNotifier<AsyncValue<List<Game>>> {
   final Ref ref;
 
   Future<void> search(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      state = const AsyncData(<Game>[]);
+      return;
+    }
+
     state = const AsyncLoading();
     try {
-      final results = await ref.read(igdbClientProvider).searchGames(query);
+      final results = await ref.read(igdbClientProvider).searchGames(trimmed);
       state = AsyncData(results);
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
