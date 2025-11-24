@@ -13,8 +13,8 @@ class IgdbClient {
     String? clientId,
     String? accessToken,
   })  : _http = httpClient ?? http.Client(),
-        clientId = clientId ?? igdbClientId,
-        accessToken = accessToken ?? igdbAccessToken;
+        clientId = (clientId ?? igdbClientId).trim(),
+        accessToken = (accessToken ?? igdbAccessToken).trim();
 
   // ignore: unused_field
   final http.Client _http;
@@ -47,6 +47,7 @@ limit 20;
       ..headers.addAll(<String, String>{
         'Client-ID': clientId,
         'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
       })
       ..body = body;
 
@@ -54,6 +55,11 @@ limit 20;
     final responseBody = await streamed.stream.bytesToString();
 
     if (streamed.statusCode != 200) {
+      if (streamed.statusCode == 401 || streamed.statusCode == 403) {
+        throw StateError(
+          'IGDB erişim yetkisi reddedildi (401/403). Client ID ve App Access Token doğru ve geçerli mi? Token süresi dolduysa yeniden üretin.',
+        );
+      }
       appLogger.error(
         'IGDB: search failed (${streamed.statusCode}) for "$sanitizedQuery"',
         responseBody,

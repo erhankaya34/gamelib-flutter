@@ -3,8 +3,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 String get supabaseUrl => sanitizeSupabaseUrl(dotenv.env['SUPABASE_URL']);
 String get supabaseAnonKey => (dotenv.env['SUPABASE_ANON_KEY'] ?? '').trim();
 
-String get igdbClientId => dotenv.env['IGDB_CLIENT_ID'] ?? '';
-String get igdbAccessToken => dotenv.env['IGDB_ACCESS_TOKEN'] ?? '';
+String get igdbClientId => (dotenv.env['IGDB_CLIENT_ID'] ?? '').trim();
+String get igdbAccessToken => (dotenv.env['IGDB_ACCESS_TOKEN'] ?? '').trim();
 
 const double pagePadding = 16.0;
 
