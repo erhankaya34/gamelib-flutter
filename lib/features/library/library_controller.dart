@@ -11,12 +11,24 @@ class LibraryController extends StateNotifier<List<GameLog>> {
   LibraryController() : super(const []);
 
   void upsertLog(GameLog log) {
-    state = [
-      for (final existing in state)
-        if (existing.id == log.id) log else existing,
-    ];
-    if (!state.any((item) => item.id == log.id)) {
+    final existingIndex = state.indexWhere((item) => item.id == log.id);
+    if (existingIndex == -1) {
       state = [...state, log];
+    } else {
+      final updated = [...state];
+      updated[existingIndex] = log;
+      state = updated;
     }
+  }
+
+  bool isInLibrary(int gameId) {
+    return state.any((log) => log.game.id == gameId);
+  }
+
+  GameLog? getLogFor(int gameId) {
+    for (final log in state) {
+      if (log.game.id == gameId) return log;
+    }
+    return null;
   }
 }

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils.dart';
+import '../library/library_controller.dart';
+import 'game_detail_screen.dart';
 import 'search_controller.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -55,8 +57,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               onSubmitted: (_) => _runSearch(),
               onChanged: _onQueryChanged,
               decoration: InputDecoration(
-                labelText: 'Search games',
-                hintText: 'Enter a title',
+                labelText: 'Oyun ara',
+                hintText: 'Başlık girin',
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search),
                   onPressed: _runSearch,
@@ -82,11 +84,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   if (results.isEmpty) {
                     return const Center(child: Text('No results yet.'));
                   }
+                  final library = ref.watch(libraryControllerProvider);
                   return ListView.separated(
                     itemCount: results.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final game = results[index];
+                      final inLibrary = library.any((log) => log.game.id == game.id);
                       return ListTile(
                         leading: game.coverUrl != null
                             ? Image.network(
@@ -97,13 +101,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                               )
                             : const SizedBox(width: 48, height: 48),
                         title: Text(game.name),
-                        subtitle: game.summary != null
-                            ? Text(
-                                game.summary!,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              )
+                        subtitle: inLibrary
+                            ? const Text('Koleksiyonda')
                             : null,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => GameDetailScreen(game: game),
+                            ),
+                          );
+                        },
                       );
                     },
                   );

@@ -37,7 +37,7 @@ class IgdbClient {
     final uri = Uri.parse('$_baseUrl/games');
     final body = '''
 search "$sanitizedQuery";
-fields id,name,summary,cover.url;
+fields id,name,summary,cover.url,platforms.name,genres.name,aggregated_rating,rating,rating_count;
 limit 20;
 ''';
 
@@ -70,20 +70,7 @@ limit 20;
     final decoded = jsonDecode(responseBody) as List<dynamic>;
     final results = decoded.map((item) {
       final map = item as Map<String, dynamic>;
-      final cover = map['cover'];
-      String? coverUrl;
-      if (cover is Map<String, dynamic>) {
-        final url = cover['url'] as String?;
-        if (url != null) {
-          coverUrl = url.startsWith('//') ? 'https:$url' : url;
-        }
-      }
-      return Game(
-        id: map['id'] as int,
-        name: map['name'] as String? ?? 'Unknown game',
-        coverUrl: coverUrl,
-        summary: map['summary'] as String?,
-      );
+      return Game.fromMap(map);
     }).toList();
 
     appLogger.info('IGDB: ${results.length} result(s) for "$sanitizedQuery"');
@@ -91,8 +78,45 @@ limit 20;
   }
 
   Future<Game?> fetchGameById(int id) async {
-    // Placeholder for future detailed fetch.
-    return null;
+    if (clientId.isEmpty || accessToken.isEmpty) {
+      throw StateError(
+        'Missing IGDB credentials. Set IGDB_CLIENT_ID and IGDB_ACCESS_TOKEN in .env.',
+      );
+    }
+    final uri = Uri.parse('$_baseUrl/games');
+    final body = '''
+where id = $id;
+fields id,name,summary,cover.url,platforms.name,genres.name,aggregated_rating,rating,rating_count;
+limit 1;
+''';
+
+    final request = http.Request('POST', uri)
+      ..headers.addAll(<String, String>{
+        'Client-ID': clientId,
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
+      })
+      ..body = body;
+
+    final streamed = await _http.send(request).timeout(const Duration(seconds: 12));
+    final responseBody = await streamed.stream.bytesToString();
+
+    if (streamed.statusCode != 200) {
+      if (streamed.statusCode == 401 || streamed.statusCode == 403) {
+        throw StateError(
+          'IGDB erişim yetkisi reddedildi (401/403). Client ID ve App Access Token doğru ve geçerli mi? Token süresi dolduysa yeniden üretin.',
+        );
+      }
+      appLogger.error(
+        'IGDB: detail failed (${streamed.statusCode}) for "$id"',
+        responseBody,
+      );
+      throw StateError('IGDB detail failed (${streamed.statusCode}). See logs.');
+    }
+
+    final decoded = jsonDecode(responseBody) as List<dynamic>;
+    if (decoded.isEmpty) return null;
+    return Game.fromMap(decoded.first as Map<String, dynamic>);
   }
 }
 
