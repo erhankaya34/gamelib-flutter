@@ -121,18 +121,30 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Background image with parallax
+                      // Background image with parallax and blur
                       Transform.translate(
                         offset: Offset(0, -parallaxOffset),
                         child: Hero(
                           tag: 'game-cover-${widget.game.id}',
                           child: detail.coverUrl != null
-                              ? CachedNetworkImage(
-                                  imageUrl: detail.coverUrl!,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
-                                    color: AppTheme.charcoal,
-                                  ),
+                              ? Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    CachedNetworkImage(
+                                      imageUrl: detail.coverUrl!,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) => Container(
+                                        color: AppTheme.charcoal,
+                                      ),
+                                    ),
+                                    // Subtle blur effect for depth
+                                    BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 0.5, sigmaY: 0.5),
+                                      child: Container(
+                                        color: Colors.black.withOpacity(0.05),
+                                      ),
+                                    ),
+                                  ],
                                 )
                               : Container(
                                   color: AppTheme.charcoal,
@@ -145,7 +157,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                         ),
                       ),
 
-                      // Gradient overlays
+                      // Enhanced gradient overlays with multiple layers
                       Positioned.fill(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
@@ -153,17 +165,35 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                Colors.black.withOpacity(0.3),
-                                Colors.black.withOpacity(0.7),
+                                Colors.black.withOpacity(0.4),
+                                Colors.black.withOpacity(0.6),
+                                Colors.black.withOpacity(0.85),
                                 Theme.of(context).scaffoldBackgroundColor,
                               ],
-                              stops: const [0.0, 0.7, 1.0],
+                              stops: const [0.0, 0.5, 0.8, 1.0],
                             ),
                           ),
                         ),
                       ),
 
-                      // Game title at bottom
+                      // Side vignette for cinematic feel
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment.center,
+                              radius: 1.0,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.3),
+                              ],
+                              stops: const [0.5, 1.0],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Game title at bottom with enhanced styling
                       Positioned(
                         left: pagePadding,
                         right: pagePadding,
@@ -173,37 +203,80 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Accent line above title
+                              Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppTheme.accentGold,
+                                      AppTheme.accentGold.withOpacity(0),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Game title with enhanced shadows
                               Text(
                                 detail.name,
                                 style: Theme.of(context)
                                     .textTheme
                                     .headlineSmall
                                     ?.copyWith(
-                                      fontSize: 28,
+                                      fontSize: 32,
                                       fontWeight: FontWeight.w900,
                                       color: Colors.white,
+                                      letterSpacing: -0.5,
+                                      height: 1.1,
                                       shadows: [
                                         Shadow(
-                                          color: Colors.black.withOpacity(0.8),
-                                          blurRadius: 12,
+                                          color: Colors.black.withOpacity(0.9),
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                        Shadow(
+                                          color: AppTheme.accentGold.withOpacity(0.3),
+                                          blurRadius: 30,
+                                          offset: const Offset(0, 0),
                                         ),
                                       ],
                                     ),
                               ),
                               if (detail.releaseDate != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  _formatDate(detail.releaseDate!),
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white70,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black.withOpacity(0.8),
-                                        blurRadius: 8,
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
                                       ),
-                                    ],
-                                  ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accentGold.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: AppTheme.accentGold.withOpacity(0.4),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        _formatDate(detail.releaseDate!),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: AppTheme.accentGold,
+                                          fontWeight: FontWeight.w600,
+                                          shadows: [
+                                            Shadow(
+                                              color: Colors.black.withOpacity(0.8),
+                                              blurRadius: 4,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ],
@@ -299,16 +372,56 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                   ),
                   child: SafeArea(
                     top: false,
-                    child: FilledButton.icon(
-                      onPressed: () => _showAddDialog(context, ref, detail, existingLog),
-                      icon: Icon(isInLibrary ? Icons.edit : Icons.add),
-                      label: Text(
-                        isInLibrary ? 'Düzenle' : 'Koleksiyona Ekle',
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isInLibrary
+                              ? [
+                                  AppTheme.accentGold,
+                                  AppTheme.accentGold.withOpacity(0.8),
+                                ]
+                              : [
+                                  AppTheme.accentGold,
+                                  const Color(0xFFD4AF37),
+                                ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.accentGold.withOpacity(0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 56),
+                      child: FilledButton.icon(
+                        onPressed: () => _showAddDialog(context, ref, detail, existingLog),
+                        icon: Icon(isInLibrary ? Icons.edit : Icons.add),
+                        label: Text(
+                          isInLibrary ? 'Düzenle' : 'Koleksiyona Ekle',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 56),
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
                       ),
-                    ),
+                    )
+                        .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                        .scale(
+                          begin: const Offset(1.0, 1.0),
+                          end: const Offset(1.02, 1.02),
+                          duration: 2000.ms,
+                        ),
                   ),
                 ),
               ),
@@ -654,38 +767,79 @@ class _GlassRatingCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppTheme.darkGray.withOpacity(0.6),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withOpacity(0.15),
+                AppTheme.darkGray.withOpacity(0.6),
+              ],
+            ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: color.withOpacity(0.3),
-              width: 1,
+              color: color.withOpacity(0.4),
+              width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.1),
-                blurRadius: 20,
-                spreadRadius: 2,
+                color: color.withOpacity(0.2),
+                blurRadius: 24,
+                spreadRadius: 0,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: Column(
             children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 8),
-              Text(
-                score.round().toString(),
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                  height: 1,
+              // Icon with subtle glow
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.3),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                    ),
+                  ],
                 ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 12),
+              // Score with glow effect
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Glow layer
+                  Text(
+                    score.round().toString(),
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                      height: 1,
+                      shadows: [
+                        Shadow(
+                          color: color.withOpacity(0.5),
+                          blurRadius: 20,
+                        ),
+                        Shadow(
+                          color: color.withOpacity(0.3),
+                          blurRadius: 40,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Colors.white60,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
                     ),
               ),
               if (count != null) ...[
@@ -693,7 +847,7 @@ class _GlassRatingCard extends StatelessWidget {
                 Text(
                   '$count oy',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withOpacity(0.5),
                       ),
                 ),
               ],
@@ -701,7 +855,7 @@ class _GlassRatingCard extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ).animate().fadeIn(duration: 600.ms).scale(begin: const Offset(0.9, 0.9));
   }
 }
 
@@ -729,22 +883,8 @@ class _PlatformSection extends StatelessWidget {
     return FontAwesomeIcons.gamepad;
   }
 
-  Color _getPlatformColor(String platform) {
-    final lower = platform.toLowerCase();
-    if (lower.contains('playstation')) return const Color(0xFF003791);
-    if (lower.contains('xbox')) return const Color(0xFF107C10);
-    if (lower.contains('switch') || lower.contains('nintendo')) {
-      return const Color(0xFFE60012);
-    }
-    if (lower.contains('pc') || lower.contains('windows') || lower.contains('steam')) {
-      return const Color(0xFF1B2838);
-    }
-    if (lower.contains('mac')) return const Color(0xFF000000);
-    if (lower.contains('linux')) return const Color(0xFFFCC624);
-    if (lower.contains('ios')) return const Color(0xFF0A84FF);
-    if (lower.contains('android')) return const Color(0xFF3DDC84);
-    return AppTheme.mediumGray;
-  }
+  // Use consistent color for all platforms
+  Color get _platformColor => const Color(0xFF6B7280); // Subtle gray
 
   @override
   Widget build(BuildContext context) {
@@ -763,21 +903,20 @@ class _PlatformSection extends StatelessWidget {
           runSpacing: 12,
           children: platforms.take(8).map((platform) {
             final icon = _getPlatformIcon(platform);
-            final color = _getPlatformColor(platform);
             return ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: 14,
+                    vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(16),
+                    color: _platformColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: color.withOpacity(0.3),
+                      color: _platformColor.withOpacity(0.3),
                       width: 1,
                     ),
                   ),
@@ -786,18 +925,21 @@ class _PlatformSection extends StatelessWidget {
                     children: [
                       FaIcon(
                         icon,
-                        size: 20,
-                        color: color,
+                        size: 18,
+                        color: _platformColor,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        platform.length > 12
-                            ? platform.substring(0, 12)
-                            : platform,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: color,
+                      // Fix text overflow with Flexible
+                      Flexible(
+                        child: Text(
+                          platform,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[300],
+                          ),
                         ),
                       ),
                     ],
@@ -832,16 +974,36 @@ class _GenreSection extends StatelessWidget {
         Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: genres.map((genre) {
+          children: genres.asMap().entries.map((entry) {
+            final index = entry.key;
+            final genre = entry.value;
+            // Create gradient colors based on genre position
+            final hue = (index * 30) % 360;
+            final color = HSLColor.fromAHSL(1.0, hue.toDouble(), 0.6, 0.5).toColor();
+
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: AppTheme.accentGold.withOpacity(0.15),
+                gradient: LinearGradient(
+                  colors: [
+                    color.withOpacity(0.2),
+                    color.withOpacity(0.05),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.accentGold.withOpacity(0.3),
-                  width: 1,
+                  color: color.withOpacity(0.4),
+                  width: 1.5,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Text(
                 genre,
@@ -928,22 +1090,108 @@ class _ScreenshotSection extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             itemCount: screenshots.length,
             itemBuilder: (context, index) {
-              return Container(
-                margin: EdgeInsets.only(
-                  right: index < screenshots.length - 1 ? 12 : 0,
-                ),
-                width: 320,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: CachedNetworkImage(
-                    imageUrl: screenshots[index],
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: AppTheme.darkGray,
-                      child: const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
+              return GestureDetector(
+                onTap: () {
+                  // Show fullscreen image viewer
+                  showDialog(
+                    context: context,
+                    barrierColor: Colors.black87,
+                    builder: (context) => Dialog(
+                      backgroundColor: Colors.transparent,
+                      insetPadding: EdgeInsets.zero,
+                      child: Stack(
+                        children: [
+                          // Fullscreen image with pinch zoom
+                          Center(
+                            child: InteractiveViewer(
+                              minScale: 0.5,
+                              maxScale: 4.0,
+                              child: CachedNetworkImage(
+                                imageUrl: screenshots[index],
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                          // Close button
+                          Positioned(
+                            top: 50,
+                            right: 20,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.close, color: Colors.white),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            ),
+                          ),
+                          // Image counter
+                          Positioned(
+                            bottom: 30,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '${index + 1} / ${screenshots.length}',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  );
+                },
+                child: Container(
+                  margin: EdgeInsets.only(
+                    right: index < screenshots.length - 1 ? 12 : 0,
+                  ),
+                  width: 320,
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: CachedNetworkImage(
+                          imageUrl: screenshots[index],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: AppTheme.darkGray,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Overlay hint
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.fullscreen,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               );

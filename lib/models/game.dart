@@ -44,9 +44,11 @@ class Game {
       if (coverData == null) return null;
       final url = coverData['url'] as String?;
       if (url == null) return null;
-      // Convert to larger image
+      // Convert to high resolution image (1080p for better quality)
       final resolvedUrl = url.startsWith('//') ? 'https:$url' : url;
-      return resolvedUrl.replaceAll('/t_thumb/', '/t_cover_big/');
+      return resolvedUrl
+          .replaceAll('/t_thumb/', '/t_1080p/')
+          .replaceAll('/t_cover_big/', '/t_1080p/');
     }
 
     List<String> parseScreenshots(dynamic value) {
@@ -57,7 +59,10 @@ class Game {
               final url = e['url'] as String?;
               if (url == null) return null;
               final resolvedUrl = url.startsWith('//') ? 'https:$url' : url;
-              return resolvedUrl.replaceAll('/t_thumb/', '/t_screenshot_med/');
+              // Use high resolution screenshots (1080p)
+              return resolvedUrl
+                  .replaceAll('/t_thumb/', '/t_1080p/')
+                  .replaceAll('/t_screenshot_med/', '/t_1080p/');
             })
             .whereType<String>()
             .toList();
