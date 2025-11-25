@@ -186,28 +186,207 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 );
               }
 
+              // Show trending games when no search query
               if (results.isEmpty) {
-                return SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.videogame_asset_outlined,
-                          size: 64,
-                          color: Colors.white24,
-                        )
-                            .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                            .scale(duration: 2.seconds),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Aramaya başlamak için\nen az 4 karakter girin',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Colors.white60,
+                final trendingAsync = ref.watch(trendingGamesProvider);
+                return trendingAsync.when(
+                  data: (trendingGames) {
+                    if (trendingGames.isEmpty) {
+                      return SliverFillRemaining(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.videogame_asset_outlined,
+                                size: 64,
+                                color: Colors.white24,
+                              )
+                                  .animate(
+                                    onPlay: (controller) =>
+                                        controller.repeat(reverse: true),
+                                  )
+                                  .scale(duration: 2.seconds),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Aramaya başlamak için\nen az 4 karakter girin',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      color: Colors.white60,
+                                    ),
                               ),
+                            ],
+                          ),
                         ),
-                      ],
+                      );
+                    }
+
+                    // Show trending games section
+                    final library =
+                        ref.watch(libraryControllerProvider).valueOrNull ?? [];
+                    return SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        pagePadding,
+                        8,
+                        pagePadding,
+                        pagePadding,
+                      ),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            if (index == 0) {
+                              // Trending header with icon
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                                .withOpacity(0.2),
+                                            Theme.of(context)
+                                                .colorScheme
+                                                .secondary
+                                                .withOpacity(0.2),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(
+                                        Icons.trending_up,
+                                        color: Theme.of(context).colorScheme.primary,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'Trend Oyunlar',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                    const Spacer(),
+                                    // Subtle sparkle decoration
+                                    Icon(
+                                      Icons.auto_awesome,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withOpacity(0.6),
+                                      size: 18,
+                                    )
+                                        .animate(
+                                          onPlay: (controller) =>
+                                              controller.repeat(reverse: true),
+                                        )
+                                        .scale(
+                                          duration: 2.seconds,
+                                          begin: const Offset(0.95, 0.95),
+                                          end: const Offset(1.05, 1.05),
+                                        ),
+                                  ],
+                                )
+                                    .animate()
+                                    .fadeIn(delay: 100.ms, duration: 600.ms)
+                                    .slideY(begin: -0.1, end: 0),
+                              );
+                            }
+
+                            final game = trendingGames[index - 1];
+                            final inLibrary =
+                                library.any((log) => log.game.id == game.id);
+                            return _GameCard(
+                              game: game,
+                              inLibrary: inLibrary,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  PageRouteBuilder(
+                                    pageBuilder: (context, animation,
+                                            secondaryAnimation) =>
+                                        GameDetailScreen(game: game),
+                                    transitionsBuilder: (context, animation,
+                                        secondaryAnimation, child) {
+                                      const begin = Offset(1.0, 0.0);
+                                      const end = Offset.zero;
+                                      const curve = Curves.easeInOutCubic;
+                                      final tween = Tween(begin: begin, end: end)
+                                          .chain(CurveTween(curve: curve));
+                                      final offsetAnimation =
+                                          animation.drive(tween);
+
+                                      return SlideTransition(
+                                        position: offsetAnimation,
+                                        child: FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
+                            )
+                                .animate()
+                                .fadeIn(
+                                  delay: (50 * (index)).ms,
+                                  duration: 600.ms,
+                                )
+                                .slideX(begin: 0.1, end: 0);
+                          },
+                          childCount: trendingGames.length + 1, // +1 for header
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () => SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Trend oyunlar yükleniyor...',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white60,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  error: (error, _) => SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 64,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Trend oyunlar yüklenemedi',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

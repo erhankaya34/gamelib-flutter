@@ -77,6 +77,60 @@ limit 20;
     return results;
   }
 
+  Future<List<Game>> fetchTrendingGames() async {
+    if (clientId.isEmpty || accessToken.isEmpty) {
+      throw StateError(
+        'Missing IGDB credentials. Set IGDB_CLIENT_ID and IGDB_ACCESS_TOKEN in .env.',
+      );
+    }
+
+    final uri = Uri.parse('$_baseUrl/games');
+    // Fetch trending games: highly rated, popular games from recent years
+    // Use aggregated_rating for critical acclaim and rating_count for popularity
+    final currentYear = DateTime.now().year;
+    final body = '''
+where aggregated_rating > 75 & rating_count > 100 & first_release_date > ${DateTime(currentYear - 5).millisecondsSinceEpoch ~/ 1000};
+fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
+sort aggregated_rating desc;
+limit 20;
+''';
+
+    appLogger.info('IGDB: fetching trending games');
+
+    final request = http.Request('POST', uri)
+      ..headers.addAll(<String, String>{
+        'Client-ID': clientId,
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
+      })
+      ..body = body;
+
+    final streamed = await _http.send(request).timeout(const Duration(seconds: 12));
+    final responseBody = await streamed.stream.bytesToString();
+
+    if (streamed.statusCode != 200) {
+      if (streamed.statusCode == 401 || streamed.statusCode == 403) {
+        throw StateError(
+          'IGDB erişim yetkisi reddedildi (401/403). Client ID ve App Access Token doğru ve geçerli mi? Token süresi dolduysa yeniden üretin.',
+        );
+      }
+      appLogger.error(
+        'IGDB: trending games failed (${streamed.statusCode})',
+        responseBody,
+      );
+      throw StateError('IGDB trending games failed (${streamed.statusCode}). See logs.');
+    }
+
+    final decoded = jsonDecode(responseBody) as List<dynamic>;
+    final results = decoded.map((item) {
+      final map = item as Map<String, dynamic>;
+      return Game.fromMap(map);
+    }).toList();
+
+    appLogger.info('IGDB: ${results.length} trending game(s)');
+    return results;
+  }
+
   Future<Game?> fetchGameById(int id) async {
     if (clientId.isEmpty || accessToken.isEmpty) {
       throw StateError(

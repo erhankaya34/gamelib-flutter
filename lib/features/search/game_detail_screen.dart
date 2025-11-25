@@ -516,25 +516,29 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                           runSpacing: 8,
                           children: [
                             _StatusChip(
-                              label: '❤️ İstek Listesi',
+                              icon: Icons.favorite_border,
+                              label: 'İstek Listesi',
                               selected: selectedStatus == PlayStatus.wishlist,
                               onTap: () => setState(() => selectedStatus = PlayStatus.wishlist),
                               color: Colors.orange,
                             ),
                             _StatusChip(
-                              label: '🎮 Oynuyor',
+                              icon: Icons.play_circle_outline,
+                              label: 'Oynuyor',
                               selected: selectedStatus == PlayStatus.playing,
                               onTap: () => setState(() => selectedStatus = PlayStatus.playing),
                               color: Colors.blue,
                             ),
                             _StatusChip(
-                              label: '✅ Tamamlandı',
+                              icon: Icons.check_circle_outline,
+                              label: 'Tamamlandı',
                               selected: selectedStatus == PlayStatus.completed,
                               onTap: () => setState(() => selectedStatus = PlayStatus.completed),
                               color: Colors.green,
                             ),
                             _StatusChip(
-                              label: '❌ Bırakıldı',
+                              icon: Icons.cancel_outlined,
+                              label: 'Bırakıldı',
                               selected: selectedStatus == PlayStatus.dropped,
                               onTap: () => setState(() => selectedStatus = PlayStatus.dropped),
                               color: Colors.red,
@@ -1209,12 +1213,14 @@ class _ScreenshotSection extends StatelessWidget {
 
 class _StatusChip extends StatelessWidget {
   const _StatusChip({
+    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
     required this.color,
   });
 
+  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -1235,12 +1241,23 @@ class _StatusChip extends StatelessWidget {
           ),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? color : Colors.grey[400],
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? color : Colors.grey[400],
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? color : Colors.grey[400],
+                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -8,6 +8,12 @@ final searchControllerProvider =
   return SearchController(ref);
 });
 
+// Provider for trending games (cached)
+final trendingGamesProvider = FutureProvider<List<Game>>((ref) async {
+  final client = ref.read(igdbClientProvider);
+  return client.fetchTrendingGames();
+});
+
 class SearchController extends StateNotifier<AsyncValue<List<Game>>> {
   SearchController(this.ref) : super(const AsyncData(<Game>[]));
 
