@@ -37,7 +37,7 @@ class IgdbClient {
     final uri = Uri.parse('$_baseUrl/games');
     final body = '''
 search "$sanitizedQuery";
-fields id,name,summary,cover.url,platforms.name,genres.name,aggregated_rating,rating,rating_count;
+fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
 limit 20;
 ''';
 
@@ -86,7 +86,7 @@ limit 20;
     final uri = Uri.parse('$_baseUrl/games');
     final body = '''
 where id = $id;
-fields id,name,summary,cover.url,platforms.name,genres.name,aggregated_rating,rating,rating_count;
+fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
 limit 1;
 ''';
 

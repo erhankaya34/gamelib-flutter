@@ -13,7 +13,8 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authProvider).valueOrNull;
     final email = session?.user.email ?? 'Guest';
-    final collection = ref.watch(libraryControllerProvider);
+    // AsyncValue olduğu için valueOrNull ile veriyi al
+    final collection = ref.watch(libraryControllerProvider).valueOrNull ?? [];
     final initials = email.isNotEmpty ? email.characters.first.toUpperCase() : '?';
     final avgRating = collection.isEmpty
         ? null
