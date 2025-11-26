@@ -20,8 +20,13 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
       if (msg.contains('invalid login credentials')) {
         return 'E-posta veya şifre hatalı.';
       }
-      if (msg.contains('user already registered')) {
-        return 'Bu e-posta ile zaten bir hesap var.';
+      // Check for duplicate email with multiple possible messages
+      if (msg.contains('user already registered') ||
+          msg.contains('email already') ||
+          msg.contains('already exists') ||
+          msg.contains('already registered') ||
+          msg.contains('already in use')) {
+        return 'Bu e-posta adresi zaten kullanılıyor.';
       }
       if (msg.contains('email not confirmed')) {
         return 'E-posta doğrulanmamış. Gelen kutunu kontrol et.';
@@ -67,14 +72,18 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
     state = const AsyncLoading();
     try {
       appLogger.info('Auth: register attempt for $email');
-      await ref.read(supabaseProvider).auth.signUp(
+      final response = await ref.read(supabaseProvider).auth.signUp(
             email: email,
             password: password,
           );
+      print('🔐 Register response: user=${response.user?.id}, session=${response.session?.accessToken != null}');
       appLogger.info('Auth: register success for $email');
       state = const AsyncData(null);
     } catch (error, stackTrace) {
+      print('🔐 Register error type: ${error.runtimeType}');
+      print('🔐 Register error message: $error');
       final message = _friendlyMessage(error);
+      print('🔐 Friendly message: $message');
       appLogger.error('Auth: register failed for $email', error, stackTrace);
       state = AsyncError(AuthFailure(message), stackTrace);
     }

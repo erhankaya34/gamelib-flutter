@@ -172,6 +172,246 @@ limit 1;
     if (decoded.isEmpty) return null;
     return Game.fromMap(decoded.first as Map<String, dynamic>);
   }
+
+  /// Fetch all available genres from IGDB
+  /// Used for genre onboarding screen
+  Future<List<String>> fetchGenres() async {
+    if (clientId.isEmpty || accessToken.isEmpty) {
+      throw StateError(
+        'Missing IGDB credentials. Set IGDB_CLIENT_ID and IGDB_ACCESS_TOKEN in .env.',
+      );
+    }
+
+    final uri = Uri.parse('$_baseUrl/genres');
+    final body = '''
+fields name;
+limit 50;
+sort name asc;
+''';
+
+    appLogger.info('IGDB: fetching genres');
+
+    final request = http.Request('POST', uri)
+      ..headers.addAll(<String, String>{
+        'Client-ID': clientId,
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
+      })
+      ..body = body;
+
+    final streamed = await _http.send(request).timeout(const Duration(seconds: 12));
+    final responseBody = await streamed.stream.bytesToString();
+
+    if (streamed.statusCode != 200) {
+      appLogger.error(
+        'IGDB: genres failed (${streamed.statusCode})',
+        responseBody,
+      );
+      throw StateError('Failed to fetch genres (${streamed.statusCode}). See logs.');
+    }
+
+    final decoded = jsonDecode(responseBody) as List<dynamic>;
+    final genres = decoded
+        .map((item) => item['name'] as String)
+        .toList();
+
+    appLogger.info('IGDB: ${genres.length} genre(s) fetched');
+    return genres;
+  }
+
+  /// Fetch game recommendations based on user's favorite genres
+  /// Used for feed screen when user has <3 friends
+  Future<List<Game>> fetchRecommendationsByGenres(
+    List<String> genreNames, {
+    int limit = 6,
+  }) async {
+    if (clientId.isEmpty || accessToken.isEmpty) {
+      throw StateError(
+        'Missing IGDB credentials. Set IGDB_CLIENT_ID and IGDB_ACCESS_TOKEN in .env.',
+      );
+    }
+
+    if (genreNames.isEmpty) {
+      // Fallback to trending games if no genres specified
+      return fetchTrendingGames();
+    }
+
+    // First, get genre IDs from genre names
+    final genreUri = Uri.parse('$_baseUrl/genres');
+    final genreQuery = genreNames.map((g) => '"$g"').join(',');
+    final genreBody = '''
+where name = ($genreQuery);
+fields id,name;
+limit 50;
+''';
+
+    final genreRequest = http.Request('POST', genreUri)
+      ..headers.addAll(<String, String>{
+        'Client-ID': clientId,
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
+      })
+      ..body = genreBody;
+
+    final genreStreamed = await _http.send(genreRequest).timeout(const Duration(seconds: 12));
+    final genreResponseBody = await genreStreamed.stream.bytesToString();
+
+    if (genreStreamed.statusCode != 200) {
+      appLogger.error(
+        'IGDB: genre lookup failed (${genreStreamed.statusCode})',
+        genreResponseBody,
+      );
+      // Fallback to trending
+      return fetchTrendingGames();
+    }
+
+    final genreDecoded = jsonDecode(genreResponseBody) as List<dynamic>;
+    final genreIds = genreDecoded
+        .map((item) => item['id'] as int)
+        .toList();
+
+    if (genreIds.isEmpty) {
+      // Fallback to trending if no matching genres
+      return fetchTrendingGames();
+    }
+
+    // Now fetch highly rated games in these genres
+    final uri = Uri.parse('$_baseUrl/games');
+    final currentYear = DateTime.now().year;
+    final genreIdList = genreIds.join(',');
+    final body = '''
+where genres = ($genreIdList) & aggregated_rating > 70 & rating_count > 50 & first_release_date > ${DateTime(currentYear - 7).millisecondsSinceEpoch ~/ 1000};
+fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
+sort aggregated_rating desc;
+limit $limit;
+''';
+
+    appLogger.info('IGDB: fetching recommendations for genres: $genreNames');
+
+    final request = http.Request('POST', uri)
+      ..headers.addAll(<String, String>{
+        'Client-ID': clientId,
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
+      })
+      ..body = body;
+
+    final streamed = await _http.send(request).timeout(const Duration(seconds: 12));
+    final responseBody = await streamed.stream.bytesToString();
+
+    if (streamed.statusCode != 200) {
+      appLogger.error(
+        'IGDB: recommendations failed (${streamed.statusCode})',
+        responseBody,
+      );
+      throw StateError('Failed to fetch recommendations (${streamed.statusCode}). See logs.');
+    }
+
+    final decoded = jsonDecode(responseBody) as List<dynamic>;
+    final results = decoded.map((item) {
+      final map = item as Map<String, dynamic>;
+      return Game.fromMap(map);
+    }).toList();
+
+    appLogger.info('IGDB: ${results.length} recommendation(s) for genres: $genreNames');
+    return results;
+  }
+
+  /// Fetch indie games personalized to user's favorite genres
+  /// Used for discover screen
+  Future<List<Game>> fetchIndieGames(List<String> genreNames) async {
+    if (clientId.isEmpty || accessToken.isEmpty) {
+      throw StateError(
+        'Missing IGDB credentials. Set IGDB_CLIENT_ID and IGDB_ACCESS_TOKEN in .env.',
+      );
+    }
+
+    // Get genre IDs if genres specified
+    List<int> genreIds = [];
+    if (genreNames.isNotEmpty) {
+      final genreUri = Uri.parse('$_baseUrl/genres');
+      final genreQuery = genreNames.map((g) => '"$g"').join(',');
+      final genreBody = '''
+where name = ($genreQuery);
+fields id,name;
+limit 50;
+''';
+
+      final genreRequest = http.Request('POST', genreUri)
+        ..headers.addAll(<String, String>{
+          'Client-ID': clientId,
+          'Authorization': 'Bearer $accessToken',
+          'Accept': 'application/json',
+        })
+        ..body = genreBody;
+
+      final genreStreamed = await _http.send(genreRequest).timeout(const Duration(seconds: 12));
+      final genreResponseBody = await genreStreamed.stream.bytesToString();
+
+      if (genreStreamed.statusCode == 200) {
+        final genreDecoded = jsonDecode(genreResponseBody) as List<dynamic>;
+        genreIds = genreDecoded.map((item) => item['id'] as int).toList();
+      }
+    }
+
+    // Build query for indie games
+    final uri = Uri.parse('$_baseUrl/games');
+    final currentYear = DateTime.now().year;
+
+    // IGDB doesn't have a direct "indie" flag, so we filter by:
+    // - Category 0 (main game)
+    // - Good ratings but not too mainstream (rating_count between 10-500)
+    // - Recent years (last 10 years)
+    // - Match user's genres if available
+    String whereClause = '''
+category = 0 &
+rating_count > 10 & rating_count < 500 &
+aggregated_rating > 65 &
+first_release_date > ${DateTime(currentYear - 10).millisecondsSinceEpoch ~/ 1000}
+''';
+
+    if (genreIds.isNotEmpty) {
+      final genreIdList = genreIds.join(',');
+      whereClause += ' & genres = ($genreIdList)';
+    }
+
+    final body = '''
+where $whereClause;
+fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
+sort aggregated_rating desc;
+limit 30;
+''';
+
+    appLogger.info('IGDB: fetching indie games');
+
+    final request = http.Request('POST', uri)
+      ..headers.addAll(<String, String>{
+        'Client-ID': clientId,
+        'Authorization': 'Bearer $accessToken',
+        'Accept': 'application/json',
+      })
+      ..body = body;
+
+    final streamed = await _http.send(request).timeout(const Duration(seconds: 12));
+    final responseBody = await streamed.stream.bytesToString();
+
+    if (streamed.statusCode != 200) {
+      appLogger.error(
+        'IGDB: indie games failed (${streamed.statusCode})',
+        responseBody,
+      );
+      throw StateError('Failed to fetch indie games (${streamed.statusCode}). See logs.');
+    }
+
+    final decoded = jsonDecode(responseBody) as List<dynamic>;
+    final results = decoded.map((item) {
+      final map = item as Map<String, dynamic>;
+      return Game.fromMap(map);
+    }).toList();
+
+    appLogger.info('IGDB: ${results.length} indie game(s)');
+    return results;
+  }
 }
 
 final igdbClientProvider = Provider<IgdbClient>((ref) {
