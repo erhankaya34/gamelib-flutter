@@ -7,18 +7,33 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/theme.dart';
+import '../../core/ui_constants.dart';
 import '../../core/utils.dart';
 import '../../data/igdb_client.dart';
 import '../../models/game.dart';
 import '../../models/game_log.dart';
 import '../library/library_controller.dart';
+import '../steam_library/steam_library_provider.dart';
 
 // UUID generator for creating new game log IDs
 const _uuid = Uuid();
 
 final gameDetailProvider = FutureProvider.family<Game?, int>((ref, id) async {
   return ref.read(igdbClientProvider).fetchGameById(id);
+});
+
+/// Provider to check if a game is in ANY library (manual OR Steam)
+final isGameInAnyLibraryProvider =
+    Provider.family<bool, int>((ref, gameId) {
+  // Check manual library
+  final manualGames = ref.watch(libraryControllerProvider).valueOrNull ?? [];
+  final isInManual = manualGames.any((log) => log.game.id == gameId);
+
+  // Check Steam library
+  final steamGames = ref.watch(steamLibraryProvider).valueOrNull ?? [];
+  final isInSteam = steamGames.any((log) => log.game.id == gameId);
+
+  return isInManual || isInSteam;
 });
 
 String _formatDate(DateTime date) {
@@ -68,12 +83,27 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
     super.dispose();
   }
 
+  /// Check if two game names are similar enough to be considered the same game
+  bool _namesAreSimilar(String name1, String name2) {
+    final n1 = name1.toLowerCase().trim();
+    final n2 = name2.toLowerCase().trim();
+    if (n1 == n2) return true;
+    if (n1.contains(n2) || n2.contains(n1)) return true;
+    final w1 = n1.split(RegExp(r'[\s:]+'));
+    final w2 = n2.split(RegExp(r'[\s:]+'));
+    if (w1.isNotEmpty && w2.isNotEmpty && w1.first == w2.first) return true;
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(gameDetailProvider(widget.game.id));
-    final detail = detailAsync.value ?? widget.game;
+    final igdbGame = detailAsync.valueOrNull;
 
-    // AsyncValue olduğu için valueOrNull ile veriyi al
+    final detail = (igdbGame != null && _namesAreSimilar(widget.game.name, igdbGame.name))
+        ? igdbGame
+        : widget.game;
+
     final existingLog = ref
         .watch(libraryControllerProvider)
         .valueOrNull
@@ -81,11 +111,13 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
         .firstOrNull;
     final isInLibrary = existingLog != null;
 
-    // Calculate parallax effect
+    final isInAnyLibrary = ref.watch(isGameInAnyLibraryProvider(widget.game.id));
+
     final double parallaxOffset = (_scrollOffset * 0.5).clamp(0.0, 100.0);
     final double opacity = (1.0 - (_scrollOffset / 200)).clamp(0.0, 1.0);
 
     return Scaffold(
+      backgroundColor: UIConstants.bgPrimary,
       body: Stack(
         children: [
           // Main content
@@ -94,25 +126,23 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
             slivers: [
               // Parallax header
               SliverAppBar(
-                expandedHeight: 400,
+                expandedHeight: 420,
                 pinned: true,
                 elevation: 0,
-                backgroundColor: Colors.transparent,
+                backgroundColor: UIConstants.bgPrimary,
                 leading: Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.black54,
+                      color: UIConstants.bgSecondary.withOpacity(0.9),
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 8,
-                        ),
-                      ],
+                      border: Border.all(
+                        color: UIConstants.accentPurple.withOpacity(0.3),
+                        width: 1,
+                      ),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -121,35 +151,23 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Background image with parallax and blur
+                      // Background image with parallax
                       Transform.translate(
                         offset: Offset(0, -parallaxOffset),
                         child: Hero(
                           tag: 'game-cover-${widget.game.id}',
-                          child: detail.coverUrl != null
-                              ? Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    CachedNetworkImage(
-                                      imageUrl: detail.coverUrl!,
-                                      fit: BoxFit.cover,
-                                      placeholder: (context, url) => Container(
-                                        color: AppTheme.charcoal,
-                                      ),
-                                    ),
-                                    // Subtle blur effect for depth
-                                    BackdropFilter(
-                                      filter: ImageFilter.blur(sigmaX: 0.5, sigmaY: 0.5),
-                                      child: Container(
-                                        color: Colors.black.withOpacity(0.05),
-                                      ),
-                                    ),
-                                  ],
+                          child: detail.coverUrlForDetail != null
+                              ? CachedNetworkImage(
+                                  imageUrl: detail.coverUrlForDetail!,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    color: UIConstants.bgSecondary,
+                                  ),
                                 )
                               : Container(
-                                  color: AppTheme.charcoal,
+                                  color: UIConstants.bgSecondary,
                                   child: const Icon(
-                                    Icons.videogame_asset,
+                                    Icons.videogame_asset_rounded,
                                     size: 80,
                                     color: Colors.white24,
                                   ),
@@ -157,7 +175,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                         ),
                       ),
 
-                      // Enhanced gradient overlays with multiple layers
+                      // Gradient overlays
                       Positioned.fill(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
@@ -165,38 +183,21 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                Colors.black.withOpacity(0.4),
-                                Colors.black.withOpacity(0.6),
-                                Colors.black.withOpacity(0.85),
-                                Theme.of(context).scaffoldBackgroundColor,
-                              ],
-                              stops: const [0.0, 0.5, 0.8, 1.0],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Side vignette for cinematic feel
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              center: Alignment.center,
-                              radius: 1.0,
-                              colors: [
                                 Colors.transparent,
-                                Colors.black.withOpacity(0.3),
+                                UIConstants.bgPrimary.withOpacity(0.3),
+                                UIConstants.bgPrimary.withOpacity(0.8),
+                                UIConstants.bgPrimary,
                               ],
-                              stops: const [0.5, 1.0],
+                              stops: const [0.0, 0.4, 0.7, 1.0],
                             ),
                           ),
                         ),
                       ),
 
-                      // Game title at bottom with enhanced styling
+                      // Game title at bottom
                       Positioned(
-                        left: pagePadding,
-                        right: pagePadding,
+                        left: UIConstants.pagePadding,
+                        right: UIConstants.pagePadding,
                         bottom: 20,
                         child: Opacity(
                           opacity: opacity,
@@ -208,77 +209,102 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                                 width: 40,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      AppTheme.accentGold,
-                                      AppTheme.accentGold.withOpacity(0),
-                                    ],
+                                  gradient: const LinearGradient(
+                                    colors: UIConstants.purpleGradient,
                                   ),
                                   borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              // Game title with enhanced shadows
+                              // Game title
                               Text(
                                 detail.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineSmall
-                                    ?.copyWith(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      letterSpacing: -0.5,
-                                      height: 1.1,
-                                      shadows: [
-                                        Shadow(
-                                          color: Colors.black.withOpacity(0.9),
-                                          blurRadius: 20,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                        Shadow(
-                                          color: AppTheme.accentGold.withOpacity(0.3),
-                                          blurRadius: 30,
-                                          offset: const Offset(0, 0),
-                                        ),
-                                      ],
-                                    ),
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  letterSpacing: -0.5,
+                                  height: 1.1,
+                                ),
                               ),
-                              if (detail.releaseDate != null) ...[
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
+                              const SizedBox(height: 12),
+                              // Badges row
+                              Row(
+                                children: [
+                                  // Release date badge
+                                  if (detail.releaseDate != null) ...[
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
                                         vertical: 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.accentGold.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(6),
+                                        color: UIConstants.accentPurple.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                          color: AppTheme.accentGold.withOpacity(0.4),
+                                          color: UIConstants.accentPurple.withOpacity(0.4),
                                           width: 1,
                                         ),
                                       ),
-                                      child: Text(
-                                        _formatDate(detail.releaseDate!),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: AppTheme.accentGold,
-                                          fontWeight: FontWeight.w600,
-                                          shadows: [
-                                            Shadow(
-                                              color: Colors.black.withOpacity(0.8),
-                                              blurRadius: 4,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 12,
+                                            color: UIConstants.accentPurple,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            _formatDate(detail.releaseDate!),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: UIConstants.accentPurple,
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
                                   ],
-                                ),
-                              ],
+                                  // In Library badge
+                                  if (isInAnyLibrary)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: UIConstants.accentGreen.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: UIConstants.accentGreen.withOpacity(0.4),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.check_circle_rounded,
+                                            size: 14,
+                                            color: UIConstants.accentGreen,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Kütüphanede',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: UIConstants.accentGreen,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -292,9 +318,9 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    pagePadding,
-                    pagePadding,
-                    pagePadding,
+                    UIConstants.pagePadding,
+                    UIConstants.pagePadding,
+                    UIConstants.pagePadding,
                     120,
                   ),
                   child: Column(
@@ -306,43 +332,43 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                           detail.metacriticScore != null)
                         _RatingSection(game: detail)
                             .animate()
-                            .fadeIn(delay: 200.ms, duration: 600.ms)
+                            .fadeIn(delay: 200.ms, duration: 500.ms)
                             .slideY(begin: 0.1, end: 0),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: UIConstants.sectionSpacing),
 
                       // Platform icons
                       if (detail.platforms.isNotEmpty)
                         _PlatformSection(platforms: detail.platforms)
                             .animate()
-                            .fadeIn(delay: 300.ms, duration: 600.ms)
+                            .fadeIn(delay: 300.ms, duration: 500.ms)
                             .slideY(begin: 0.1, end: 0),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: UIConstants.sectionSpacing),
 
                       // Genres
                       if (detail.genres.isNotEmpty)
                         _GenreSection(genres: detail.genres)
                             .animate()
-                            .fadeIn(delay: 400.ms, duration: 600.ms)
+                            .fadeIn(delay: 400.ms, duration: 500.ms)
                             .slideY(begin: 0.1, end: 0),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: UIConstants.sectionSpacing),
 
                       // Summary
                       if (detail.summary != null)
                         _SummarySection(summary: detail.summary!)
                             .animate()
-                            .fadeIn(delay: 500.ms, duration: 600.ms)
+                            .fadeIn(delay: 500.ms, duration: 500.ms)
                             .slideY(begin: 0.1, end: 0),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: UIConstants.sectionSpacing),
 
                       // Screenshots
                       if (detail.screenshotUrls.isNotEmpty)
                         _ScreenshotSection(screenshots: detail.screenshotUrls)
                             .animate()
-                            .fadeIn(delay: 600.ms, duration: 600.ms)
+                            .fadeIn(delay: 600.ms, duration: 500.ms)
                             .slideY(begin: 0.1, end: 0),
                     ],
                   ),
@@ -351,7 +377,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
             ],
           ),
 
-          // Bottom action button with glassmorphism
+          // Bottom action button
           Positioned(
             left: 0,
             right: 0,
@@ -360,68 +386,58 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
-                  padding: const EdgeInsets.all(pagePadding),
+                  padding: const EdgeInsets.all(UIConstants.pagePadding),
                   decoration: BoxDecoration(
-                    color: AppTheme.charcoal.withOpacity(0.8),
+                    color: UIConstants.bgSecondary.withOpacity(0.9),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withOpacity(0.05),
                         width: 1,
                       ),
                     ),
                   ),
                   child: SafeArea(
                     top: false,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isInLibrary
-                              ? [
-                                  AppTheme.accentGold,
-                                  AppTheme.accentGold.withOpacity(0.8),
-                                ]
-                              : [
-                                  AppTheme.accentGold,
-                                  const Color(0xFFD4AF37),
-                                ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    child: GestureDetector(
+                      onTap: () => _showAddDialog(context, ref, detail, existingLog),
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isInLibrary
+                                ? UIConstants.violetGradient
+                                : UIConstants.purpleGradient,
+                          ),
+                          borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                          boxShadow: [
+                            BoxShadow(
+                              color: UIConstants.accentPurple.withOpacity(0.4),
+                              blurRadius: 20,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.accentGold.withOpacity(0.4),
-                            blurRadius: 20,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: FilledButton.icon(
-                        onPressed: () => _showAddDialog(context, ref, detail, existingLog),
-                        icon: Icon(isInLibrary ? Icons.edit : Icons.add),
-                        label: Text(
-                          isInLibrary ? 'Düzenle' : 'Koleksiyona Ekle',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 56),
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isInLibrary ? Icons.edit_rounded : Icons.add_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isInLibrary ? 'Düzenle' : 'Koleksiyona Ekle',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    )
-                        .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                        .scale(
-                          begin: const Offset(1.0, 1.0),
-                          end: const Offset(1.02, 1.02),
-                          duration: 2000.ms,
-                        ),
+                    ),
                   ),
                 ),
               ),
@@ -446,7 +462,6 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        // selectedStatus MUST be outside StatefulBuilder to persist
         PlayStatus selectedStatus = existingLog?.status ?? PlayStatus.completed;
 
         return StatefulBuilder(
@@ -459,18 +474,18 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: AppTheme.charcoal.withOpacity(0.95),
+                    color: UIConstants.bgSecondary.withOpacity(0.98),
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withOpacity(0.05),
                       width: 1,
                     ),
                   ),
                   padding: EdgeInsets.only(
-                    left: pagePadding,
-                    right: pagePadding,
+                    left: UIConstants.pagePadding,
+                    right: UIConstants.pagePadding,
                     top: 24,
-                    bottom: MediaQuery.of(context).viewInsets.bottom + pagePadding,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + UIConstants.pagePadding,
                   ),
                   child: SingleChildScrollView(
                     child: Column(
@@ -483,20 +498,24 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppTheme.accentGold.withOpacity(0.15),
+                                gradient: const LinearGradient(
+                                  colors: UIConstants.purpleGradient,
+                                ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                isEditing ? Icons.edit : Icons.add_circle_outline,
-                                color: AppTheme.accentGold,
+                                isEditing ? Icons.edit_rounded : Icons.add_rounded,
+                                color: Colors.white,
                                 size: 24,
                               ),
                             ),
                             const SizedBox(width: 16),
-                            Expanded(
-                              child: Text(
-                                isEditing ? 'Oyunu Düzenle' : 'Kütüphaneye Ekle',
-                                style: Theme.of(context).textTheme.titleLarge,
+                            Text(
+                              isEditing ? 'Oyunu Düzenle' : 'Kütüphaneye Ekle',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
                               ),
                             ),
                           ],
@@ -505,10 +524,13 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
 
                         // Status Selection
                         Text(
-                          'Durum',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                color: Colors.grey[400],
-                              ),
+                          'DURUM',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.5,
+                            color: Colors.white.withOpacity(0.5),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Wrap(
@@ -516,32 +538,32 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                           runSpacing: 8,
                           children: [
                             _StatusChip(
-                              icon: Icons.favorite_border,
+                              icon: Icons.favorite_rounded,
                               label: 'İstek Listesi',
                               selected: selectedStatus == PlayStatus.wishlist,
                               onTap: () => setState(() => selectedStatus = PlayStatus.wishlist),
-                              color: Colors.orange,
+                              color: UIConstants.accentYellow,
                             ),
                             _StatusChip(
-                              icon: Icons.play_circle_outline,
+                              icon: Icons.play_circle_rounded,
                               label: 'Oynuyor',
                               selected: selectedStatus == PlayStatus.playing,
                               onTap: () => setState(() => selectedStatus = PlayStatus.playing),
-                              color: Colors.blue,
+                              color: UIConstants.accentPurple,
                             ),
                             _StatusChip(
-                              icon: Icons.check_circle_outline,
+                              icon: Icons.check_circle_rounded,
                               label: 'Tamamlandı',
                               selected: selectedStatus == PlayStatus.completed,
                               onTap: () => setState(() => selectedStatus = PlayStatus.completed),
-                              color: Colors.green,
+                              color: UIConstants.accentGreen,
                             ),
                             _StatusChip(
-                              icon: Icons.cancel_outlined,
+                              icon: Icons.cancel_rounded,
                               label: 'Bırakıldı',
                               selected: selectedStatus == PlayStatus.dropped,
                               onTap: () => setState(() => selectedStatus = PlayStatus.dropped),
-                              color: Colors.red,
+                              color: UIConstants.accentRed,
                             ),
                           ],
                         ),
@@ -549,27 +571,24 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
 
                         // Rating (only if not wishlist)
                         if (showRating) ...[
-                          TextField(
+                          _buildTextField(
                             controller: ratingController,
+                            label: 'Puan (1-10)',
+                            hint: 'Oyuna verdiğin puan',
+                            icon: Icons.star_rounded,
+                            iconColor: UIConstants.accentYellow,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Puan (1-10)',
-                              helperText: 'Oyuna verdiğin puan',
-                              prefixIcon: Icon(Icons.star, color: Colors.amber),
-                            ),
                           ),
                           const SizedBox(height: 16),
                         ],
 
                         // Notes
-                        TextField(
+                        _buildTextField(
                           controller: noteController,
+                          label: 'Yorum / Not (opsiyonel)',
+                          hint: 'Düşüncelerini yaz...',
+                          icon: Icons.note_rounded,
                           maxLines: 3,
-                          decoration: const InputDecoration(
-                            labelText: 'Yorum / Not (opsiyonel)',
-                            prefixIcon: Icon(Icons.note_outlined),
-                            alignLabelWithHint: true,
-                          ),
                         ),
                         const SizedBox(height: 24),
 
@@ -579,25 +598,35 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                             // Delete Button (only when editing)
                             if (isEditing) ...[
                               Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () async {
-                                    // Confirm deletion
+                                child: GestureDetector(
+                                  onTap: () async {
                                     final confirmed = await showDialog<bool>(
                                       context: context,
                                       builder: (context) => AlertDialog(
-                                        title: const Text('Oyunu Sil'),
-                                        content: const Text(
+                                        backgroundColor: UIConstants.bgSecondary,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        title: const Text(
+                                          'Oyunu Sil',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                        content: Text(
                                           'Bu oyunu kütüphanenden silmek istediğinden emin misin?',
+                                          style: TextStyle(color: Colors.white.withOpacity(0.7)),
                                         ),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(context, false),
-                                            child: const Text('İptal'),
+                                            child: Text(
+                                              'İptal',
+                                              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                                            ),
                                           ),
                                           FilledButton(
                                             onPressed: () => Navigator.pop(context, true),
                                             style: FilledButton.styleFrom(
-                                              backgroundColor: Colors.red,
+                                              backgroundColor: UIConstants.accentRed,
                                             ),
                                             child: const Text('Sil'),
                                           ),
@@ -609,20 +638,46 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                                       ref.read(libraryControllerProvider.notifier).deleteLog(existingLog.id);
                                       Navigator.of(context).pop();
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Oyun kütüphaneden silindi'),
-                                          backgroundColor: Colors.red,
+                                        SnackBar(
+                                          content: const Text('Oyun kütüphaneden silindi'),
+                                          backgroundColor: UIConstants.accentRed,
                                           behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
                                         ),
                                       );
                                     }
                                   },
-                                  icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Sil'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                    side: const BorderSide(color: Colors.red),
-                                    minimumSize: const Size(0, 56),
+                                  child: Container(
+                                    height: 56,
+                                    decoration: BoxDecoration(
+                                      color: UIConstants.accentRed.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                                      border: Border.all(
+                                        color: UIConstants.accentRed.withOpacity(0.4),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.delete_rounded,
+                                          color: UIConstants.accentRed,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Sil',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: UIConstants.accentRed,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -631,39 +686,105 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                             // Save Button
                             Expanded(
                               flex: isEditing ? 2 : 1,
-                              child: FilledButton(
-                                onPressed: () {
-                                  // Rating only if not wishlist
+                              child: GestureDetector(
+                                onTap: () async {
                                   final rating = showRating ? int.tryParse(ratingController.text) : null;
                                   final clampedRating = rating == null ? null : rating.clamp(1, 10);
 
-                                  ref.read(libraryControllerProvider.notifier).upsertLog(
-                                        GameLog(
-                                          id: existingLog?.id ?? _uuid.v4(),
-                                          game: game,
-                                          status: selectedStatus,
-                                          rating: clampedRating,
-                                          notes: noteController.text.trim().isEmpty
-                                              ? null
-                                              : noteController.text.trim(),
+                                  try {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            const Text('Kaydediliyor...'),
+                                          ],
                                         ),
-                                      );
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(_getStatusMessage(selectedStatus)),
-                                      backgroundColor: AppTheme.accentGold,
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                        backgroundColor: UIConstants.bgTertiary,
+                                        duration: const Duration(seconds: 30),
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    );
+
+                                    await ref.read(libraryControllerProvider.notifier).upsertLog(
+                                          GameLog(
+                                            id: existingLog?.id ?? _uuid.v4(),
+                                            game: game,
+                                            status: selectedStatus,
+                                            rating: clampedRating,
+                                            notes: noteController.text.trim().isEmpty
+                                                ? null
+                                                : noteController.text.trim(),
+                                          ),
+                                        );
+
+                                    if (!context.mounted) return;
+                                    Navigator.of(context).pop();
+                                    ScaffoldMessenger.of(context).clearSnackBars();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(_getStatusMessage(selectedStatus)),
+                                        backgroundColor: UIConstants.accentGreen,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    );
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).clearSnackBars();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Hata: $e'),
+                                        backgroundColor: UIConstants.accentRed,
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 5),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: UIConstants.purpleGradient,
+                                    ),
+                                    borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: UIConstants.accentPurple.withOpacity(0.4),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      'Kaydet',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
                                       ),
                                     ),
-                                  );
-                                },
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size(0, 56),
+                                  ),
                                 ),
-                                child: const Text('Kaydet'),
                               ),
                             ),
                           ],
@@ -677,6 +798,42 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    Color? iconColor,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: UIConstants.bgTertiary,
+        borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.05),
+          width: 1,
+        ),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+          prefixIcon: Icon(icon, color: iconColor ?? UIConstants.accentPurple),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.all(16),
+        ),
+      ),
     );
   }
 
@@ -694,6 +851,50 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
   }
 }
 
+// ============================================
+// SECTION HEADER WIDGET
+// ============================================
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    this.accentColor = UIConstants.accentPurple,
+  });
+
+  final String title;
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: accentColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================
+// RATING SECTION
+// ============================================
+
 class _RatingSection extends StatelessWidget {
   const _RatingSection({required this.game});
 
@@ -704,33 +905,28 @@ class _RatingSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Puanlar',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 12),
+        const _SectionHeader(title: 'Puanlar'),
+        const SizedBox(height: 16),
         Row(
           children: [
             if (game.metacriticScore != null)
               Expanded(
-                child: _GlassRatingCard(
+                child: _RatingCard(
                   label: 'Metacritic',
                   score: game.metacriticScore!.toDouble(),
-                  icon: Icons.sports_esports,
-                  color: _getMetacriticColor(game.metacriticScore!),
+                  icon: Icons.sports_esports_rounded,
+                  gradient: _getMetacriticGradient(game.metacriticScore!),
                 ),
               ),
             if (game.metacriticScore != null && game.userRating != null)
               const SizedBox(width: 12),
             if (game.userRating != null)
               Expanded(
-                child: _GlassRatingCard(
+                child: _RatingCard(
                   label: 'IGDB',
                   score: game.userRating!,
-                  icon: Icons.people,
-                  color: Colors.blue,
+                  icon: Icons.people_rounded,
+                  gradient: UIConstants.purpleGradient,
                   count: game.ratingCount,
                 ),
               ),
@@ -740,128 +936,96 @@ class _RatingSection extends StatelessWidget {
     );
   }
 
-  Color _getMetacriticColor(int score) {
-    if (score >= 75) return Colors.green;
-    if (score >= 50) return Colors.yellow.shade700;
-    return Colors.red;
+  List<Color> _getMetacriticGradient(int score) {
+    if (score >= 75) return UIConstants.greenGradient;
+    if (score >= 50) return UIConstants.yellowGradient;
+    return UIConstants.redGradient;
   }
 }
 
-class _GlassRatingCard extends StatelessWidget {
-  const _GlassRatingCard({
+class _RatingCard extends StatelessWidget {
+  const _RatingCard({
     required this.label,
     required this.score,
     required this.icon,
-    required this.color,
+    required this.gradient,
     this.count,
   });
 
   final String label;
   final double score;
   final IconData icon;
-  final Color color;
+  final List<Color> gradient;
   final int? count;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                color.withOpacity(0.15),
-                AppTheme.darkGray.withOpacity(0.6),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: color.withOpacity(0.4),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.2),
-                blurRadius: 24,
-                spreadRadius: 0,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              // Icon with subtle glow
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.3),
-                      blurRadius: 12,
-                      spreadRadius: 0,
-                    ),
-                  ],
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 12),
-              // Score with glow effect
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Glow layer
-                  Text(
-                    score.round().toString(),
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w900,
-                      color: color,
-                      height: 1,
-                      shadows: [
-                        Shadow(
-                          color: color.withOpacity(0.5),
-                          blurRadius: 20,
-                        ),
-                        Shadow(
-                          color: color.withOpacity(0.3),
-                          blurRadius: 40,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              if (count != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '$count oy',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.white.withOpacity(0.5),
-                      ),
-                ),
-              ],
-            ],
-          ),
+    return Container(
+      padding: const EdgeInsets.all(UIConstants.cardPadding),
+      decoration: BoxDecoration(
+        color: UIConstants.bgSecondary,
+        borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+        border: Border.all(
+          color: gradient[0].withOpacity(0.3),
+          width: 1,
         ),
       ),
-    ).animate().fadeIn(duration: 600.ms).scale(begin: const Offset(0.9, 0.9));
+      child: Column(
+        children: [
+          // Icon with gradient background
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: gradient),
+              borderRadius: BorderRadius.circular(UIConstants.radiusSmall),
+            ),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+          const SizedBox(height: 12),
+          // Score
+          Text(
+            score.round().toString(),
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1,
+              shadows: [
+                Shadow(
+                  color: gradient[0].withOpacity(0.5),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withOpacity(0.5),
+            ),
+          ),
+          if (count != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '$count oy',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withOpacity(0.3),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
+
+// ============================================
+// PLATFORM SECTION
+// ============================================
 
 class _PlatformSection extends StatelessWidget {
   const _PlatformSection({required this.platforms});
@@ -887,68 +1051,49 @@ class _PlatformSection extends StatelessWidget {
     return FontAwesomeIcons.gamepad;
   }
 
-  // Use consistent color for all platforms
-  Color get _platformColor => const Color(0xFF6B7280); // Subtle gray
-
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Platformlar',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 12),
+        const _SectionHeader(title: 'Platformlar', accentColor: UIConstants.accentSteam),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           children: platforms.take(8).map((platform) {
             final icon = _getPlatformIcon(platform);
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
+            return Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: UIConstants.bgSecondary,
+                borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.1),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FaIcon(
+                    icon,
+                    size: 16,
+                    color: UIConstants.textSecondary,
                   ),
-                  decoration: BoxDecoration(
-                    color: _platformColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _platformColor.withOpacity(0.3),
-                      width: 1,
+                  const SizedBox(width: 8),
+                  Text(
+                    platform,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: UIConstants.textSecondary,
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FaIcon(
-                        icon,
-                        size: 18,
-                        color: _platformColor,
-                      ),
-                      const SizedBox(width: 8),
-                      // Fix text overflow with Flexible
-                      Flexible(
-                        child: Text(
-                          platform,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[300],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ),
             );
           }).toList(),
@@ -957,6 +1102,10 @@ class _PlatformSection extends StatelessWidget {
     );
   }
 }
+
+// ============================================
+// GENRE SECTION
+// ============================================
 
 class _GenreSection extends StatelessWidget {
   const _GenreSection({required this.genres});
@@ -968,53 +1117,39 @@ class _GenreSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Türler',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 12),
+        const _SectionHeader(title: 'Türler', accentColor: UIConstants.accentViolet),
+        const SizedBox(height: 16),
         Wrap(
           spacing: 10,
           runSpacing: 10,
           children: genres.asMap().entries.map((entry) {
             final index = entry.key;
             final genre = entry.value;
-            // Create gradient colors based on genre position
-            final hue = (index * 30) % 360;
-            final color = HSLColor.fromAHSL(1.0, hue.toDouble(), 0.6, 0.5).toColor();
+            // Rotate through accent colors
+            final gradients = [
+              UIConstants.purpleGradient,
+              UIConstants.violetGradient,
+              UIConstants.greenGradient,
+              UIConstants.yellowGradient,
+            ];
+            final gradient = gradients[index % gradients.length];
 
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    color.withOpacity(0.2),
-                    color.withOpacity(0.05),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
+                color: gradient[0].withOpacity(0.15),
+                borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
                 border: Border.all(
-                  color: color.withOpacity(0.4),
-                  width: 1.5,
+                  color: gradient[0].withOpacity(0.3),
+                  width: 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
               child: Text(
                 genre,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.accentGold,
+                  color: gradient[0],
                 ),
               ),
             );
@@ -1024,6 +1159,10 @@ class _GenreSection extends StatelessWidget {
     );
   }
 }
+
+// ============================================
+// SUMMARY SECTION
+// ============================================
 
 class _SummarySection extends StatelessWidget {
   const _SummarySection({required this.summary});
@@ -1035,34 +1174,24 @@ class _SummarySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Hakkında',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 12),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppTheme.darkGray.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                summary,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      height: 1.8,
-                      color: Colors.white70,
-                    ),
-              ),
+        const _SectionHeader(title: 'Hakkında'),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(UIConstants.cardPadding),
+          decoration: BoxDecoration(
+            color: UIConstants.bgSecondary,
+            borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.05),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            summary,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.7,
+              color: Colors.white.withOpacity(0.7),
             ),
           ),
         ),
@@ -1070,6 +1199,10 @@ class _SummarySection extends StatelessWidget {
     );
   }
 }
+
+// ============================================
+// SCREENSHOT SECTION
+// ============================================
 
 class _ScreenshotSection extends StatelessWidget {
   const _ScreenshotSection({required this.screenshots});
@@ -1081,13 +1214,8 @@ class _ScreenshotSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Ekran Görüntüleri',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 12),
+        const _SectionHeader(title: 'Ekran Görüntüleri', accentColor: UIConstants.accentGreen),
+        const SizedBox(height: 16),
         SizedBox(
           height: 200,
           child: ListView.builder(
@@ -1096,16 +1224,14 @@ class _ScreenshotSection extends StatelessWidget {
             itemBuilder: (context, index) {
               return GestureDetector(
                 onTap: () {
-                  // Show fullscreen image viewer
                   showDialog(
                     context: context,
-                    barrierColor: Colors.black87,
+                    barrierColor: Colors.black.withOpacity(0.95),
                     builder: (context) => Dialog(
                       backgroundColor: Colors.transparent,
                       insetPadding: EdgeInsets.zero,
                       child: Stack(
                         children: [
-                          // Fullscreen image with pinch zoom
                           Center(
                             child: InteractiveViewer(
                               minScale: 0.5,
@@ -1116,22 +1242,24 @@ class _ScreenshotSection extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // Close button
                           Positioned(
                             top: 50,
                             right: 20,
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.black54,
+                                color: UIConstants.bgSecondary,
                                 shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.1),
+                                  width: 1,
+                                ),
                               ),
                               child: IconButton(
-                                icon: const Icon(Icons.close, color: Colors.white),
+                                icon: const Icon(Icons.close_rounded, color: Colors.white),
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ),
                           ),
-                          // Image counter
                           Positioned(
                             bottom: 30,
                             left: 0,
@@ -1143,7 +1271,7 @@ class _ScreenshotSection extends StatelessWidget {
                                   vertical: 8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.black54,
+                                  color: UIConstants.bgSecondary,
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
@@ -1166,30 +1294,35 @@ class _ScreenshotSection extends StatelessWidget {
                   child: Stack(
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
                         child: CachedNetworkImage(
                           imageUrl: screenshots[index],
                           fit: BoxFit.cover,
+                          width: 320,
+                          height: 200,
                           placeholder: (context, url) => Container(
-                            color: AppTheme.darkGray,
-                            child: const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                            color: UIConstants.bgSecondary,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: UIConstants.accentPurple,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                      // Overlay hint
+                      // Fullscreen hint
                       Positioned(
                         bottom: 8,
                         right: 8,
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.black54,
+                            color: UIConstants.bgPrimary.withOpacity(0.8),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
-                            Icons.fullscreen,
+                            Icons.fullscreen_rounded,
                             color: Colors.white,
                             size: 20,
                           ),
@@ -1228,18 +1361,18 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.2) : Colors.grey.withOpacity(0.1),
+          color: selected ? color.withOpacity(0.2) : UIConstants.bgTertiary,
           border: Border.all(
-            color: selected ? color : Colors.grey.withOpacity(0.3),
-            width: 2,
+            color: selected ? color : Colors.white.withOpacity(0.1),
+            width: selected ? 2 : 1,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1247,14 +1380,15 @@ class _StatusChip extends StatelessWidget {
             Icon(
               icon,
               size: 18,
-              color: selected ? color : Colors.grey[400],
+              color: selected ? color : Colors.white.withOpacity(0.4),
             ),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: selected ? color : Colors.grey[400],
-                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                color: selected ? color : Colors.white.withOpacity(0.4),
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 13,
               ),
             ),
           ],

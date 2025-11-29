@@ -1,16 +1,12 @@
-/// LibraryScreen - Oyun Kütüphanesi Ekranı
-///
-/// 2 sekme içerir:
-/// 1. Koleksiyon (Collection) - Oynadığın oyunlar (completed, playing, dropped)
-/// 2. İstek Listesi (Wishlist) - Oynamak istediğin oyunlar (wishlist)
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme.dart';
-import '../../core/utils.dart';
+import '../../core/ui_constants.dart';
+import '../../data/profile_repository.dart';
+import '../../data/steam_library_sync_service.dart';
+import '../../data/supabase_client.dart';
 import '../../models/game_log.dart';
 import '../library/library_controller.dart';
 import '../search/game_detail_screen.dart';
@@ -22,100 +18,143 @@ class LibraryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final logsAsync = ref.watch(libraryControllerProvider);
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Kütüphane'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(
-                icon: Icon(Icons.collections_bookmark),
-                text: 'Koleksiyon',
-              ),
-              Tab(
-                icon: Icon(Icons.favorite_border),
-                text: 'İstek Listesi',
-              ),
-            ],
-          ),
-        ),
-        body: logsAsync.when(
-          // ✅ Data yüklendi - oyunları filtrele ve göster
-          data: (logs) {
-            // Koleksiyon: completed, playing, dropped
-            final collectionGames = logs
-                .where((log) =>
-                    log.status == PlayStatus.completed ||
-                    log.status == PlayStatus.playing ||
-                    log.status == PlayStatus.dropped)
-                .toList();
+    return Scaffold(
+      backgroundColor: UIConstants.bgPrimary,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Custom Header
+            _LibraryHeader(),
 
-            // İstek Listesi: wishlist
-            final wishlistGames =
-                logs.where((log) => log.status == PlayStatus.wishlist).toList();
+            // Content
+            Expanded(
+              child: logsAsync.when(
+                data: (logs) {
+                  final collectionGames = logs
+                      .where((log) =>
+                          log.status == PlayStatus.completed ||
+                          log.status == PlayStatus.playing ||
+                          log.status == PlayStatus.dropped)
+                      .toList();
 
-            return TabBarView(
-              children: [
-                // Koleksiyon Tab
-                _CollectionTab(games: collectionGames, ref: ref),
-                // Wishlist Tab
-                _WishlistTab(games: wishlistGames, ref: ref),
-              ],
-            );
-          },
+                  collectionGames.sort((a, b) {
+                    final aPlaytime = a.playtimeMinutes;
+                    final bPlaytime = b.playtimeMinutes;
+                    return bPlaytime.compareTo(aPlaytime);
+                  });
 
-          // ⏳ Yükleniyor
-          loading: () => const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Kütüphane yükleniyor...'),
-              ],
-            ),
-          ),
-
-          // ❌ Hata oluştu
-          error: (error, stack) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Kütüphane yüklenemedi',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    error.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () =>
-                        ref.read(libraryControllerProvider.notifier).refresh(),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Tekrar Dene'),
-                  ),
-                ],
+                  return _CollectionTab(games: collectionGames, ref: ref);
+                },
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: UIConstants.accentPurple),
+                ),
+                error: (error, stack) => _ErrorState(
+                  message: error.toString(),
+                  onRetry: () => ref.read(libraryControllerProvider.notifier).refresh(),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ============================================
-// COLLECTION TAB (Koleksiyon)
-// ============================================
+class _LibraryHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 28,
+            decoration: BoxDecoration(
+              color: UIConstants.accentPurple,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'KAYITLARIM',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms);
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: UIConstants.accentRed.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: UIConstants.accentRed,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Bir hata oluştu',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Tekrar Dene'),
+              style: FilledButton.styleFrom(
+                backgroundColor: UIConstants.accentPurple,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _CollectionTab extends StatelessWidget {
   const _CollectionTab({required this.games, required this.ref});
@@ -126,88 +165,201 @@ class _CollectionTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (games.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                    Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-                  ],
-                ),
-              ),
-              child: Icon(
-                Icons.collections_bookmark_outlined,
-                size: 48,
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
-              ),
-            )
-                .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                .scale(duration: 2.seconds, begin: const Offset(0.95, 0.95), end: const Offset(1.0, 1.0)),
-            const SizedBox(height: 20),
-            const Text(
-              'Koleksiyonun boş',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.add_circle_outline,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Oynadığın oyunları ekle',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[400]),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
+      return _EmptyCollectionState();
     }
 
     return RefreshIndicator(
       onRefresh: () => ref.read(libraryControllerProvider.notifier).refresh(),
+      color: UIConstants.accentPurple,
+      backgroundColor: UIConstants.bgSecondary,
       child: ListView.builder(
-        padding: const EdgeInsets.all(pagePadding),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: games.length,
         itemBuilder: (context, index) {
           final log = games[index];
-          return _ModernGameCard(
+          return _GameCard(
             log: log,
-            statusColor: _getStatusColor(log.status),
-            statusText: _getStatusText(log.status),
-            statusIcon: _getStatusIcon(log.status),
-          );
+            index: index,
+          ).animate().fadeIn(
+            delay: Duration(milliseconds: index * 50),
+            duration: 400.ms,
+          ).slideX(begin: 0.1, end: 0);
         },
       ),
     );
   }
+}
 
-  Color _getStatusColor(PlayStatus status) {
-    switch (status) {
+class _EmptyCollectionState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: UIConstants.accentPurple.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.collections_bookmark_outlined,
+              size: 56,
+              color: UIConstants.accentPurple.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Koleksiyon Boş',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Oynadığın oyunları buraya ekle',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 600.ms);
+  }
+}
+
+class _WishlistTab extends StatelessWidget {
+  const _WishlistTab({
+    required this.games,
+    required this.ref,
+    this.onSyncSteamWishlist,
+  });
+
+  final List<GameLog> games;
+  final WidgetRef ref;
+  final VoidCallback? onSyncSteamWishlist;
+
+  @override
+  Widget build(BuildContext context) {
+    if (games.isEmpty) {
+      return _EmptyWishlistState(onSyncSteamWishlist: onSyncSteamWishlist);
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => ref.read(libraryControllerProvider.notifier).refresh(),
+      color: UIConstants.accentYellow,
+      backgroundColor: UIConstants.bgSecondary,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: games.length,
+        itemBuilder: (context, index) {
+          final log = games[index];
+          return _GameCard(
+            log: log,
+            index: index,
+            isWishlist: true,
+          ).animate().fadeIn(
+            delay: Duration(milliseconds: index * 50),
+            duration: 400.ms,
+          ).slideX(begin: 0.1, end: 0);
+        },
+      ),
+    );
+  }
+}
+
+class _EmptyWishlistState extends StatelessWidget {
+  const _EmptyWishlistState({this.onSyncSteamWishlist});
+
+  final VoidCallback? onSyncSteamWishlist;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: UIConstants.accentYellow.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.favorite_border_rounded,
+              size: 56,
+              color: UIConstants.accentYellow.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'İstek Listesi Boş',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Oynamak istediğin oyunları ekle',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: onSyncSteamWishlist,
+            icon: const Icon(Icons.download_rounded),
+            label: const Text('Steam İstek Listesini Çek'),
+            style: FilledButton.styleFrom(
+              backgroundColor: UIConstants.accentSteam,
+              foregroundColor: UIConstants.bgSteam,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 600.ms);
+  }
+}
+
+class _GameCard extends StatelessWidget {
+  const _GameCard({
+    required this.log,
+    required this.index,
+    this.isWishlist = false,
+  });
+
+  final GameLog log;
+  final int index;
+  final bool isWishlist;
+
+  Color get _statusColor {
+    if (isWishlist) return UIConstants.accentYellow;
+    switch (log.status) {
       case PlayStatus.completed:
-        return Colors.green;
+        return UIConstants.accentGreen;
       case PlayStatus.playing:
-        return Colors.blue;
+        return UIConstants.accentPurple;
       case PlayStatus.dropped:
-        return Colors.red;
+        return UIConstants.accentRed;
       default:
         return Colors.grey;
     }
   }
 
-  String _getStatusText(PlayStatus status) {
-    switch (status) {
+  String get _statusText {
+    if (isWishlist) return 'İstek Listesi';
+    switch (log.status) {
       case PlayStatus.completed:
         return 'Tamamlandı';
       case PlayStatus.playing:
@@ -215,136 +367,22 @@ class _CollectionTab extends StatelessWidget {
       case PlayStatus.dropped:
         return 'Bırakıldı';
       default:
-        return status.name;
+        return log.status.name;
     }
   }
 
-  IconData _getStatusIcon(PlayStatus status) {
-    switch (status) {
+  IconData get _statusIcon {
+    if (isWishlist) return Icons.favorite_rounded;
+    switch (log.status) {
       case PlayStatus.completed:
-        return Icons.check_circle;
+        return Icons.check_circle_rounded;
       case PlayStatus.playing:
-        return Icons.play_circle;
+        return Icons.play_circle_rounded;
       case PlayStatus.dropped:
-        return Icons.cancel;
+        return Icons.cancel_rounded;
       default:
         return Icons.circle;
     }
-  }
-}
-
-// ============================================
-// WISHLIST TAB (İstek Listesi)
-// ============================================
-
-class _WishlistTab extends StatelessWidget {
-  const _WishlistTab({required this.games, required this.ref});
-
-  final List<GameLog> games;
-  final WidgetRef ref;
-
-  @override
-  Widget build(BuildContext context) {
-    if (games.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.tertiary.withOpacity(0.1),
-                    Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-                  ],
-                ),
-              ),
-              child: Icon(
-                Icons.favorite_border,
-                size: 48,
-                color: Theme.of(context).colorScheme.secondary.withOpacity(0.6),
-              ),
-            )
-                .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                .scale(
-                  duration: 2.seconds,
-                  begin: const Offset(0.95, 0.95),
-                  end: const Offset(1.05, 1.05),
-                ),
-            const SizedBox(height: 20),
-            const Text(
-              'İstek listesi boş',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.add_circle_outline,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Oynamak istediğin oyunları ekle',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[400]),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: () => ref.read(libraryControllerProvider.notifier).refresh(),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(pagePadding),
-        itemCount: games.length,
-        itemBuilder: (context, index) {
-          final log = games[index];
-          return _ModernGameCard(
-            log: log,
-            statusColor: Colors.orange,
-            statusText: 'İstek Listesi',
-            statusIcon: Icons.favorite,
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ============================================
-// MODERN GAME CARD WIDGET
-// ============================================
-
-class _ModernGameCard extends StatelessWidget {
-  const _ModernGameCard({
-    required this.log,
-    required this.statusColor,
-    required this.statusText,
-    required this.statusIcon,
-  });
-
-  final GameLog log;
-  final Color statusColor;
-  final String statusText;
-  final IconData statusIcon;
-
-  // Convert cover URL to high resolution
-  String? get _highResCoverUrl {
-    final url = log.game.coverUrl;
-    if (url == null) return null;
-
-    // Replace thumbnail and cover_big with 1080p for better quality
-    return url
-        .replaceAll('/t_thumb/', '/t_1080p/')
-        .replaceAll('/t_cover_big/', '/t_1080p/')
-        .replaceAll('/t_cover_small/', '/t_1080p/');
   }
 
   @override
@@ -358,65 +396,42 @@ class _ModernGameCard extends StatelessWidget {
         );
       },
       child: Container(
-        height: 160,
+        height: 140,
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: statusColor.withOpacity(0.2),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          color: UIConstants.bgSecondary,
+          borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+          border: Border.all(
+            color: _statusColor.withOpacity(0.2),
+          ),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
           child: Stack(
-            fit: StackFit.expand,
             children: [
-              // Background image (high resolution)
-              if (_highResCoverUrl != null)
-                CachedNetworkImage(
-                  imageUrl: _highResCoverUrl!,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: const Icon(
-                      Icons.videogame_asset,
-                      size: 48,
-                      color: Colors.grey,
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: const Icon(
-                    Icons.videogame_asset,
-                    size: 48,
-                    color: Colors.grey,
+              // Background image
+              if (log.game.coverUrlForGrid != null)
+                Positioned.fill(
+                  child: CachedNetworkImage(
+                    imageUrl: log.game.coverUrlForGrid!,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
                   ),
                 ),
 
               // Gradient overlay
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Colors.black.withOpacity(0.9),
-                      Colors.black.withOpacity(0.7),
-                      Colors.black.withOpacity(0.3),
-                    ],
-                    stops: const [0.0, 0.5, 1.0],
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        UIConstants.bgPrimary.withOpacity(0.95),
+                        UIConstants.bgPrimary.withOpacity(0.8),
+                        UIConstants.bgPrimary.withOpacity(0.4),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -426,127 +441,138 @@ class _ModernGameCard extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    // Left side - Game info
+                    // Game cover
+                    Container(
+                      width: 75,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _statusColor.withOpacity(0.3),
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: log.game.coverUrlForGrid != null
+                            ? CachedNetworkImage(
+                                imageUrl: log.game.coverUrlForGrid!,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => _GamePlaceholder(),
+                              )
+                            : _GamePlaceholder(),
+                      ),
+                    ),
+
+                    const SizedBox(width: 16),
+
+                    // Game info
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Game title
+                          // Game name
                           Text(
                             log.game.name,
                             style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
                               color: Colors.white,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black,
-                                  blurRadius: 8,
-                                ),
-                              ],
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 6),
+
+                          const SizedBox(height: 8),
 
                           // Status badge
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
-                              vertical: 6,
+                              vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: statusColor.withOpacity(0.4),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                              color: _statusColor.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _statusColor.withOpacity(0.3),
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  statusIcon,
+                                  _statusIcon,
                                   size: 14,
-                                  color: Colors.white,
+                                  color: _statusColor,
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 5),
                                 Text(
-                                  statusText,
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  _statusText,
+                                  style: TextStyle(
+                                    color: _statusColor,
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ],
                             ),
                           ),
 
-                          // Rating
-                          if (log.rating != null) ...[
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.star,
-                                  color: Colors.amber,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${log.rating}/10',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black,
-                                        blurRadius: 4,
+                          // Rating or playtime
+                          if (log.rating != null || log.playtimeMinutes > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  if (log.rating != null) ...[
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      size: 16,
+                                      color: UIConstants.accentYellow,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${log.rating}/10',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-
-                          // Notes preview
-                          if (log.notes != null && log.notes!.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              log.notes!,
-                              style: TextStyle(
-                                color: Colors.grey[300],
-                                fontSize: 12,
-                                shadows: const [
-                                  Shadow(
-                                    color: Colors.black,
-                                    blurRadius: 4,
-                                  ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                  ],
+                                  if (log.playtimeMinutes > 0) ...[
+                                    Icon(
+                                      Icons.schedule_rounded,
+                                      size: 14,
+                                      color: UIConstants.accentSteam,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${log.playtimeHours.toStringAsFixed(1)}s',
+                                      style: TextStyle(
+                                        color: UIConstants.accentSteam,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
                         ],
                       ),
                     ),
 
-                    // Right side - Chevron indicator
-                    const SizedBox(width: 12),
+                    // Chevron
                     Icon(
-                      Icons.chevron_right,
-                      color: Colors.white.withOpacity(0.7),
-                      size: 28,
+                      Icons.chevron_right_rounded,
+                      color: Colors.white.withOpacity(0.3),
+                      size: 24,
                     ),
                   ],
                 ),
@@ -554,7 +580,23 @@ class _ModernGameCard extends StatelessWidget {
             ],
           ),
         ),
-      ).animate().fadeIn(duration: 400.ms).slideX(begin: 0.1, end: 0),
+      ),
+    );
+  }
+}
+
+class _GamePlaceholder extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: UIConstants.bgTertiary,
+      child: const Center(
+        child: Icon(
+          Icons.sports_esports_rounded,
+          color: UIConstants.accentPurple,
+          size: 28,
+        ),
+      ),
     );
   }
 }

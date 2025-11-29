@@ -46,26 +46,37 @@ class Game {
       if (url == null) return null;
       // Convert to high resolution image (1080p for better quality)
       final resolvedUrl = url.startsWith('//') ? 'https:$url' : url;
+      // Handle all IGDB thumbnail formats
       return resolvedUrl
           .replaceAll('/t_thumb/', '/t_1080p/')
-          .replaceAll('/t_cover_big/', '/t_1080p/');
+          .replaceAll('/t_cover_big/', '/t_1080p/')
+          .replaceAll('/t_cover_small/', '/t_1080p/')
+          .replaceAll('/t_cover_small_2x/', '/t_1080p/')
+          .replaceAll('/t_cover_big_2x/', '/t_1080p/')
+          .replaceAll('/t_micro/', '/t_1080p/')
+          .replaceAll('/t_logo_med/', '/t_1080p/');
     }
 
     List<String> parseScreenshots(dynamic value) {
       if (value is List) {
-        return value
-            .whereType<Map<String, dynamic>>()
-            .map((e) {
-              final url = e['url'] as String?;
-              if (url == null) return null;
-              final resolvedUrl = url.startsWith('//') ? 'https:$url' : url;
-              // Use high resolution screenshots (1080p)
-              return resolvedUrl
-                  .replaceAll('/t_thumb/', '/t_1080p/')
-                  .replaceAll('/t_screenshot_med/', '/t_1080p/');
-            })
-            .whereType<String>()
-            .toList();
+        // Handle both formats:
+        // 1. IGDB format: [{url: '...'}, {url: '...'}]
+        // 2. DB storage format: ['url1', 'url2']
+        return value.map((e) {
+          String? url;
+          if (e is Map<String, dynamic>) {
+            url = e['url'] as String?;
+          } else if (e is String) {
+            url = e;
+          }
+          if (url == null) return null;
+          final resolvedUrl = url.startsWith('//') ? 'https:$url' : url;
+          // Use high resolution screenshots
+          return resolvedUrl
+              .replaceAll('/t_thumb/', '/t_screenshot_huge/')
+              .replaceAll('/t_screenshot_med/', '/t_screenshot_huge/')
+              .replaceAll('/t_screenshot_big/', '/t_screenshot_huge/');
+        }).whereType<String>().toList();
       }
       return const [];
     }
@@ -73,7 +84,16 @@ class Game {
     DateTime? parseReleaseDate(dynamic value) {
       if (value == null) return null;
       if (value is int) {
-        return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+        // IGDB format: Unix timestamp (seconds)
+        // DB format: millisecondsSinceEpoch
+        // Determine which format based on value size
+        if (value > 1e12) {
+          // Already in milliseconds
+          return DateTime.fromMillisecondsSinceEpoch(value);
+        } else {
+          // In seconds (IGDB format)
+          return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+        }
       }
       return null;
     }
@@ -83,7 +103,8 @@ class Game {
       name: data['name'] as String? ?? 'Unknown',
       // Check for direct coverUrl string first (from database), then fallback to cover map (from IGDB)
       coverUrl: data['coverUrl'] as String? ?? resolveCover(data['cover'] as Map<String, dynamic>?),
-      screenshotUrls: parseScreenshots(data['screenshots']),
+      // Check both DB format (screenshotUrls) and IGDB format (screenshots)
+      screenshotUrls: parseScreenshots(data['screenshotUrls'] ?? data['screenshots']),
       summary: data['summary'] as String?,
       platforms: parseList(data['platforms']),
       genres: parseList(data['genres']),
@@ -94,7 +115,8 @@ class Game {
                        (data['aggregated_rating_count'] as int) >= 7
           ? (data['aggregated_rating'] as num?)?.round()
           : null,
-      releaseDate: parseReleaseDate(data['first_release_date']),
+      // Check both IGDB field name and DB storage field name
+      releaseDate: parseReleaseDate(data['first_release_date'] ?? data['releaseDate']),
     );
   }
 
@@ -113,5 +135,45 @@ class Game {
       'metacriticScore': metacriticScore,
       'releaseDate': releaseDate?.millisecondsSinceEpoch,
     };
+  }
+
+  /// Get cover URL optimized for grid/list view (528x748 - retina medium)
+  /// Balances quality and performance for library grids
+  String? get coverUrlForGrid {
+    if (coverUrl == null) return null;
+    // For IGDB URLs, use cover_big_2x (528x748) which is good for grids
+    if (coverUrl!.contains('images.igdb.com')) {
+      return coverUrl!
+          .replaceAll('/t_1080p/', '/t_cover_big_2x/')
+          .replaceAll('/t_720p/', '/t_cover_big_2x/');
+    }
+    // Steam header.jpg (460x215) is used for Steam games - always exists
+    return coverUrl;
+  }
+
+  /// Get cover URL for full-screen detail view (1080p - highest quality)
+  String? get coverUrlForDetail {
+    if (coverUrl == null) return null;
+    // For IGDB URLs, ensure we use 1080p
+    if (coverUrl!.contains('images.igdb.com')) {
+      return coverUrl!
+          .replaceAll('/t_cover_big_2x/', '/t_1080p/')
+          .replaceAll('/t_cover_big/', '/t_1080p/')
+          .replaceAll('/t_cover_small/', '/t_1080p/')
+          .replaceAll('/t_thumb/', '/t_1080p/');
+    }
+    return coverUrl;
+  }
+
+  /// Get small thumbnail for compact lists (264x374)
+  String? get coverUrlForThumbnail {
+    if (coverUrl == null) return null;
+    if (coverUrl!.contains('images.igdb.com')) {
+      return coverUrl!
+          .replaceAll('/t_1080p/', '/t_cover_big/')
+          .replaceAll('/t_720p/', '/t_cover_big/')
+          .replaceAll('/t_cover_big_2x/', '/t_cover_big/');
+    }
+    return coverUrl;
   }
 }

@@ -9,7 +9,9 @@ import 'username_controller.dart';
 /// Beautiful register screen with username selection
 /// User selects username during registration
 class RegisterScreen extends ConsumerStatefulWidget {
-  const RegisterScreen({super.key});
+  final String? initialEmail;
+
+  const RegisterScreen({super.key, this.initialEmail});
 
   @override
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
@@ -25,6 +27,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscureConfirm = true;
   String? _usernameError;
   bool _isCheckingUsername = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill email if provided
+    if (widget.initialEmail != null) {
+      _emailController.text = widget.initialEmail!;
+    }
+  }
 
   @override
   void dispose() {
@@ -155,6 +166,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     // Save username immediately after registration
     final usernameController = ref.read(usernameControllerProvider.notifier);
     await usernameController.saveUsername(_usernameController.text.trim());
+
+    // Close register screen - AuthGate will handle navigation to onboarding
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override

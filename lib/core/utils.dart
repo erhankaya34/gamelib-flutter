@@ -6,6 +6,8 @@ String get supabaseAnonKey => (dotenv.env['SUPABASE_ANON_KEY'] ?? '').trim();
 String get igdbClientId => (dotenv.env['IGDB_CLIENT_ID'] ?? '').trim();
 String get igdbAccessToken => (dotenv.env['IGDB_ACCESS_TOKEN'] ?? '').trim();
 
+String get steamApiKey => (dotenv.env['STEAM_API_KEY'] ?? '').trim();
+
 const double pagePadding = 16.0;
 
 String sanitizeSupabaseUrl(String? raw) {

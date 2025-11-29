@@ -412,6 +412,127 @@ limit 30;
     appLogger.info('IGDB: ${results.length} indie game(s)');
     return results;
   }
+
+  /// Batch fetch games by Steam App IDs using IGDB external_games endpoint
+  /// This is MUCH faster than searching by name for each game
+  /// Returns a map of Steam App ID -> IGDB Game
+  Future<Map<int, Game>> fetchGamesBySteamAppIds(List<int> steamAppIds) async {
+    if (clientId.isEmpty || accessToken.isEmpty) {
+      throw StateError(
+        'Missing IGDB credentials. Set IGDB_CLIENT_ID and IGDB_ACCESS_TOKEN in .env.',
+      );
+    }
+
+    if (steamAppIds.isEmpty) return {};
+
+    appLogger.info('IGDB: Batch fetching ${steamAppIds.length} games by Steam App IDs');
+
+    final results = <int, Game>{};
+
+    // Process in batches of 50 (IGDB allows up to 500 per request, but 50 is safer)
+    const batchSize = 50;
+    for (var i = 0; i < steamAppIds.length; i += batchSize) {
+      final batch = steamAppIds.skip(i).take(batchSize).toList();
+      final uidList = batch.map((id) => '"steam-$id"').join(',');
+
+      // Step 1: Get IGDB game IDs from external_games using Steam App IDs
+      final externalUri = Uri.parse('$_baseUrl/external_games');
+      final externalBody = '''
+where uid = ($uidList) & category = 1;
+fields game,uid;
+limit $batchSize;
+''';
+
+      final externalRequest = http.Request('POST', externalUri)
+        ..headers.addAll(<String, String>{
+          'Client-ID': clientId,
+          'Authorization': 'Bearer $accessToken',
+          'Accept': 'application/json',
+        })
+        ..body = externalBody;
+
+      final externalStreamed = await _http.send(externalRequest).timeout(const Duration(seconds: 15));
+      final externalResponseBody = await externalStreamed.stream.bytesToString();
+
+      if (externalStreamed.statusCode != 200) {
+        appLogger.warning('IGDB: external_games batch failed (${externalStreamed.statusCode})');
+        continue;
+      }
+
+      final externalDecoded = jsonDecode(externalResponseBody) as List<dynamic>;
+
+      if (externalDecoded.isEmpty) {
+        appLogger.info('IGDB: No matches found for batch starting at $i');
+        continue;
+      }
+
+      // Build map of IGDB game ID -> Steam App ID
+      final gameIdToSteamId = <int, int>{};
+      for (final item in externalDecoded) {
+        final map = item as Map<String, dynamic>;
+        final gameId = map['game'] as int?;
+        final uid = map['uid'] as String?;
+        if (gameId != null && uid != null) {
+          final steamId = int.tryParse(uid.replaceFirst('steam-', ''));
+          if (steamId != null) {
+            gameIdToSteamId[gameId] = steamId;
+          }
+        }
+      }
+
+      if (gameIdToSteamId.isEmpty) continue;
+
+      // Step 2: Fetch full game details for these IGDB game IDs
+      final gameIds = gameIdToSteamId.keys.toList();
+      final gameIdList = gameIds.join(',');
+
+      final gamesUri = Uri.parse('$_baseUrl/games');
+      final gamesBody = '''
+where id = ($gameIdList);
+fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
+limit ${gameIds.length};
+''';
+
+      final gamesRequest = http.Request('POST', gamesUri)
+        ..headers.addAll(<String, String>{
+          'Client-ID': clientId,
+          'Authorization': 'Bearer $accessToken',
+          'Accept': 'application/json',
+        })
+        ..body = gamesBody;
+
+      final gamesStreamed = await _http.send(gamesRequest).timeout(const Duration(seconds: 15));
+      final gamesResponseBody = await gamesStreamed.stream.bytesToString();
+
+      if (gamesStreamed.statusCode != 200) {
+        appLogger.warning('IGDB: games batch failed (${gamesStreamed.statusCode})');
+        continue;
+      }
+
+      final gamesDecoded = jsonDecode(gamesResponseBody) as List<dynamic>;
+
+      for (final item in gamesDecoded) {
+        final map = item as Map<String, dynamic>;
+        final game = Game.fromMap(map);
+        final steamId = gameIdToSteamId[game.id];
+        if (steamId != null) {
+          results[steamId] = game;
+        }
+      }
+
+      // Log progress
+      final processed = i + batch.length;
+      appLogger.info('IGDB: Batch processed $processed/${steamAppIds.length}, matched ${results.length}');
+
+      // Small delay between batches to respect rate limits
+      if (i + batchSize < steamAppIds.length) {
+        await Future.delayed(const Duration(milliseconds: 260));
+      }
+    }
+
+    appLogger.info('IGDB: Batch fetch complete - matched ${results.length}/${steamAppIds.length} games');
+    return results;
+  }
 }
 
 final igdbClientProvider = Provider<IgdbClient>((ref) {

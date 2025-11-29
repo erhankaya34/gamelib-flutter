@@ -6,7 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 
-import '../../core/utils.dart';
+import '../../core/ui_constants.dart';
 import '../library/library_controller.dart';
 import 'game_detail_screen.dart';
 import 'search_controller.dart';
@@ -20,6 +20,7 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _queryController = TextEditingController();
+  final _focusNode = FocusNode();
   Timer? _debounce;
   static const _minChars = 4;
   static const _debounceDuration = Duration(milliseconds: 350);
@@ -28,6 +29,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void dispose() {
     _debounce?.cancel();
     _queryController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -49,472 +51,306 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final searchState = ref.watch(searchControllerProvider);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // Modern animated app bar
-          SliverAppBar(
-            floating: true,
-            snap: true,
-            elevation: 0,
-            backgroundColor: Colors.transparent,
-            expandedHeight: 120,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Theme.of(context).scaffoldBackgroundColor,
-                      Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0),
-                    ],
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(pagePadding, 60, pagePadding, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Oyun Ara',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    )
-                        .animate()
-                        .fadeIn(duration: 600.ms)
-                        .slideY(begin: -0.2, end: 0),
-                  ],
-                ),
-              ),
+      backgroundColor: UIConstants.bgPrimary,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            // Header
+            SliverToBoxAdapter(
+              child: _SearchHeader(),
             ),
-          ),
 
-          // Search bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(pagePadding, 8, pagePadding, 16),
-              child: _ModernSearchBar(
-                controller: _queryController,
-                onChanged: _onQueryChanged,
-                onSubmitted: (_) => _runSearch(),
-                onSearch: _runSearch,
-              ).animate().fadeIn(delay: 200.ms, duration: 600.ms).slideY(begin: -0.1, end: 0),
-            ),
-          ),
-
-          // Loading indicator
-          if (searchState.isLoading)
+            // Search bar
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: pagePadding),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    backgroundColor: Colors.white10,
-                    valueColor: AlwaysStoppedAnimation(
-                      Theme.of(context).colorScheme.primary,
-                    ),
-                    minHeight: 3,
-                  ),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: _SearchBar(
+                  controller: _queryController,
+                  focusNode: _focusNode,
+                  onChanged: _onQueryChanged,
+                  onSubmitted: (_) => _runSearch(),
                 ),
               ),
             ),
 
-          // Error message
-          if (searchState.hasError)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(pagePadding),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.error.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.error.withOpacity(0.3),
+            // Loading indicator
+            if (searchState.isLoading)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: const LinearProgressIndicator(
+                      backgroundColor: UIConstants.bgSecondary,
+                      valueColor: AlwaysStoppedAnimation(UIConstants.accentPurple),
+                      minHeight: 3,
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+
+            // Error message
+            if (searchState.hasError)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: UIConstants.accentRed.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                      border: Border.all(
+                        color: UIConstants.accentRed.withOpacity(0.3),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          searchState.error.toString(),
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: UIConstants.accentRed,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            searchState.error.toString(),
+                            style: const TextStyle(color: UIConstants.accentRed),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                )
-                    .animate()
-                    .shake(duration: 400.ms)
-                    .fadeIn(),
-              ),
-            ),
-
-          // Results
-          searchState.when(
-            data: (results) {
-              if (results.isEmpty && _queryController.text.trim().length >= _minChars) {
-                return SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_off,
-                          size: 64,
-                          color: Colors.white24,
-                        )
-                            .animate(onPlay: (controller) => controller.repeat())
-                            .fadeIn(duration: 600.ms)
-                            .scale(delay: 200.ms),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Sonuç bulunamadı',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Colors.white60,
-                              ),
-                        ).animate().fadeIn(delay: 400.ms),
                       ],
                     ),
                   ),
-                );
-              }
-
-              // Show trending games when no search query
-              if (results.isEmpty) {
-                final trendingAsync = ref.watch(trendingGamesProvider);
-                return trendingAsync.when(
-                  data: (trendingGames) {
-                    if (trendingGames.isEmpty) {
-                      return SliverFillRemaining(
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.videogame_asset_outlined,
-                                size: 64,
-                                color: Colors.white24,
-                              )
-                                  .animate(
-                                    onPlay: (controller) =>
-                                        controller.repeat(reverse: true),
-                                  )
-                                  .scale(duration: 2.seconds),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Aramaya başlamak için\nen az 4 karakter girin',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      color: Colors.white60,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-
-                    // Show trending games section
-                    final library =
-                        ref.watch(libraryControllerProvider).valueOrNull ?? [];
-                    return SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(
-                        pagePadding,
-                        8,
-                        pagePadding,
-                        pagePadding,
-                      ),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            if (index == 0) {
-                              // Trending header with icon
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withOpacity(0.2),
-                                            Theme.of(context)
-                                                .colorScheme
-                                                .secondary
-                                                .withOpacity(0.2),
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Icon(
-                                        Icons.trending_up,
-                                        color: Theme.of(context).colorScheme.primary,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      'Trend Oyunlar',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleLarge
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                    const Spacer(),
-                                    // Subtle sparkle decoration
-                                    Icon(
-                                      Icons.auto_awesome,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withOpacity(0.6),
-                                      size: 18,
-                                    )
-                                        .animate(
-                                          onPlay: (controller) =>
-                                              controller.repeat(reverse: true),
-                                        )
-                                        .scale(
-                                          duration: 2.seconds,
-                                          begin: const Offset(0.95, 0.95),
-                                          end: const Offset(1.05, 1.05),
-                                        ),
-                                  ],
-                                )
-                                    .animate()
-                                    .fadeIn(delay: 100.ms, duration: 600.ms)
-                                    .slideY(begin: -0.1, end: 0),
-                              );
-                            }
-
-                            final game = trendingGames[index - 1];
-                            final inLibrary =
-                                library.any((log) => log.game.id == game.id);
-                            return _GameCard(
-                              game: game,
-                              inLibrary: inLibrary,
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  PageRouteBuilder(
-                                    pageBuilder: (context, animation,
-                                            secondaryAnimation) =>
-                                        GameDetailScreen(game: game),
-                                    transitionsBuilder: (context, animation,
-                                        secondaryAnimation, child) {
-                                      const begin = Offset(1.0, 0.0);
-                                      const end = Offset.zero;
-                                      const curve = Curves.easeInOutCubic;
-                                      final tween = Tween(begin: begin, end: end)
-                                          .chain(CurveTween(curve: curve));
-                                      final offsetAnimation =
-                                          animation.drive(tween);
-
-                                      return SlideTransition(
-                                        position: offsetAnimation,
-                                        child: FadeTransition(
-                                          opacity: animation,
-                                          child: child,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                );
-                              },
-                            )
-                                .animate()
-                                .fadeIn(
-                                  delay: (50 * (index)).ms,
-                                  duration: 600.ms,
-                                )
-                                .slideX(begin: 0.1, end: 0);
-                          },
-                          childCount: trendingGames.length + 1, // +1 for header
-                        ),
-                      ),
-                    );
-                  },
-                  loading: () => SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Trend oyunlar yükleniyor...',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Colors.white60,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  error: (error, _) => SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            size: 64,
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Trend oyunlar yüklenemedi',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              // AsyncValue olduğu için valueOrNull ile veriyi al
-              final library = ref.watch(libraryControllerProvider).valueOrNull ?? [];
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(pagePadding, 8, pagePadding, pagePadding),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final game = results[index];
-                      final inLibrary = library.any((log) => log.game.id == game.id);
-                      return _GameCard(
-                        game: game,
-                        inLibrary: inLibrary,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            PageRouteBuilder(
-                              pageBuilder: (context, animation, secondaryAnimation) =>
-                                  GameDetailScreen(game: game),
-                              transitionsBuilder:
-                                  (context, animation, secondaryAnimation, child) {
-                                const begin = Offset(1.0, 0.0);
-                                const end = Offset.zero;
-                                const curve = Curves.easeInOutCubic;
-                                final tween = Tween(begin: begin, end: end)
-                                    .chain(CurveTween(curve: curve));
-                                final offsetAnimation = animation.drive(tween);
-
-                                return SlideTransition(
-                                  position: offsetAnimation,
-                                  child: FadeTransition(
-                                    opacity: animation,
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              transitionDuration: const Duration(milliseconds: 400),
-                            ),
-                          );
-                        },
-                      )
-                          .animate()
-                          .fadeIn(
-                            delay: Duration(milliseconds: 50 * index),
-                            duration: 400.ms,
-                          )
-                          .slideX(
-                            begin: 0.1,
-                            end: 0,
-                            delay: Duration(milliseconds: 50 * index),
-                            duration: 400.ms,
-                            curve: Curves.easeOutCubic,
-                          );
-                    },
-                    childCount: results.length,
-                  ),
-                ),
-              );
-            },
-            loading: () => SliverPadding(
-              padding: const EdgeInsets.all(pagePadding),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => const _ShimmerGameCard(),
-                  childCount: 5,
                 ),
               ),
+
+            // Results
+            searchState.when(
+              data: (results) {
+                if (results.isEmpty && _queryController.text.trim().length >= _minChars) {
+                  return SliverFillRemaining(
+                    child: _NoResultsState(),
+                  );
+                }
+
+                if (results.isEmpty) {
+                  final trendingAsync = ref.watch(trendingGamesProvider);
+                  return trendingAsync.when(
+                    data: (trendingGames) {
+                      if (trendingGames.isEmpty) {
+                        return SliverFillRemaining(
+                          child: _EmptySearchState(),
+                        );
+                      }
+                      return _TrendingGamesSection(games: trendingGames);
+                    },
+                    loading: () => SliverFillRemaining(
+                      child: const Center(
+                        child: CircularProgressIndicator(color: UIConstants.accentPurple),
+                      ),
+                    ),
+                    error: (error, _) => SliverFillRemaining(
+                      child: _ErrorState(message: error.toString()),
+                    ),
+                  );
+                }
+
+                final library = ref.watch(libraryControllerProvider).valueOrNull ?? [];
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final game = results[index];
+                        final inLibrary = library.any((log) => log.game.id == game.id);
+                        return _GameCard(
+                          game: game,
+                          inLibrary: inLibrary,
+                          index: index,
+                        );
+                      },
+                      childCount: results.length,
+                    ),
+                  ),
+                );
+              },
+              loading: () => SliverPadding(
+                padding: const EdgeInsets.all(20),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => const _ShimmerGameCard(),
+                    childCount: 5,
+                  ),
+                ),
+              ),
+              error: (error, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
             ),
-            error: (error, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ModernSearchBar extends StatelessWidget {
-  const _ModernSearchBar({
+class _SearchHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 28,
+            decoration: BoxDecoration(
+              color: UIConstants.accentPurple,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'OYUN ARA',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms);
+  }
+}
+
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({
     required this.controller,
+    required this.focusNode,
     required this.onChanged,
     required this.onSubmitted,
-    required this.onSearch,
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final ValueChanged<String> onChanged;
   final ValueChanged<String> onSubmitted;
-  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: UIConstants.bgSecondary,
+        borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+        border: Border.all(
+          color: UIConstants.accentPurple.withOpacity(0.2),
+        ),
       ),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         textInputAction: TextInputAction.search,
         onSubmitted: onSubmitted,
         onChanged: onChanged,
-        style: const TextStyle(fontSize: 16),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+        ),
         decoration: InputDecoration(
-          labelText: 'Oyun ara',
-          hintText: 'Başlık girin (min. 4 karakter)',
-          prefixIcon: Icon(
-            Icons.search,
-            color: Theme.of(context).colorScheme.primary,
-            size: 24,
+          hintText: 'Oyun ara (min. 4 karakter)',
+          hintStyle: TextStyle(
+            color: Colors.white.withOpacity(0.3),
+            fontSize: 15,
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: UIConstants.accentPurple,
+            size: 22,
           ),
           suffixIcon: controller.text.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
+                  icon: Icon(
+                    Icons.clear_rounded,
+                    color: Colors.white.withOpacity(0.5),
+                    size: 20,
+                  ),
                   onPressed: () {
                     controller.clear();
                     onChanged('');
                   },
                 )
               : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+        ),
+      ),
+    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+  }
+}
+
+class _TrendingGamesSection extends ConsumerWidget {
+  const _TrendingGamesSection({required this.games});
+
+  final List<dynamic> games;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final library = ref.watch(libraryControllerProvider).valueOrNull ?? [];
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: UIConstants.purpleGradient,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.trending_up_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Trend Oyunlar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      color: UIConstants.accentPurple.withOpacity(0.6),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(delay: 100.ms, duration: 400.ms);
+            }
+
+            final game = games[index - 1];
+            final inLibrary = library.any((log) => log.game.id == game.id);
+            return _GameCard(
+              game: game,
+              inLibrary: inLibrary,
+              index: index - 1,
+            );
+          },
+          childCount: games.length + 1,
         ),
       ),
     );
@@ -525,170 +361,312 @@ class _GameCard extends StatelessWidget {
   const _GameCard({
     required this.game,
     required this.inLibrary,
-    required this.onTap,
+    required this.index,
   });
 
   final dynamic game;
   final bool inLibrary;
-  final VoidCallback onTap;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: inLibrary
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-              : Colors.white.withOpacity(0.05),
-          width: 1,
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => GameDetailScreen(game: game),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: UIConstants.bgSecondary,
+          borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+          border: Border.all(
+            color: inLibrary
+                ? UIConstants.accentGreen.withOpacity(0.3)
+                : Colors.white.withOpacity(0.05),
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Cover image
+              Hero(
+                tag: 'game-cover-${game.id}',
+                child: Container(
+                  width: 75,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: UIConstants.accentPurple.withOpacity(0.2),
+                        blurRadius: 12,
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: game.coverUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: game.coverUrlForGrid ?? game.coverUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: UIConstants.bgTertiary,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: UIConstants.accentPurple,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => _GamePlaceholder(),
+                          )
+                        : _GamePlaceholder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Game info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      game.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (game.releaseDate != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${game.releaseDate!.year}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.5),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    if (game.genres.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: game.genres.take(2).map<Widget>((genre) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: UIConstants.accentPurple.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              genre,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: UIConstants.accentPurple,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    if (inLibrary) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 14,
+                            color: UIConstants.accentGreen,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'Koleksiyonda',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: UIConstants.accentGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // Arrow
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white.withOpacity(0.3),
+                size: 24,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fadeIn(
+      delay: Duration(milliseconds: 50 * index),
+      duration: 400.ms,
+    ).slideX(begin: 0.1, end: 0);
+  }
+}
+
+class _GamePlaceholder extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: UIConstants.bgTertiary,
+      child: const Center(
+        child: Icon(
+          Icons.sports_esports_rounded,
+          color: UIConstants.accentPurple,
+          size: 28,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptySearchState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: UIConstants.accentPurple.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.sports_esports_rounded,
+              size: 56,
+              color: UIConstants.accentPurple.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Oyun Ara',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'En az 4 karakter girin',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
+            ),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Cover image with Hero animation
-                Hero(
-                  tag: 'game-cover-${game.id}',
-                  child: Container(
-                    width: 80,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: game.coverUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: game.coverUrl!,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                child: const Icon(Icons.videogame_asset, size: 32),
-                              ),
-                            )
-                          : Container(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                              child: const Icon(Icons.videogame_asset, size: 32),
-                            ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
+    ).animate().fadeIn(duration: 600.ms);
+  }
+}
 
-                // Game info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        game.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (game.releaseDate != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '${game.releaseDate!.year}',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.white54,
-                              ),
-                        ),
-                      ],
-                      if (game.genres.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: game.genres.take(2).map<Widget>((genre) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                genre,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                      if (inLibrary) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              size: 16,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Koleksiyonda',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                // Arrow icon
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.white38,
-                ),
-              ],
+class _NoResultsState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: UIConstants.accentYellow.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.search_off_rounded,
+              size: 56,
+              color: UIConstants.accentYellow.withOpacity(0.6),
             ),
           ),
-        ),
+          const SizedBox(height: 24),
+          const Text(
+            'Sonuç Bulunamadı',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Farklı bir arama terimi deneyin',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 600.ms);
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: UIConstants.accentRed.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.error_outline_rounded,
+              size: 56,
+              color: UIConstants.accentRed,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Bir Hata Oluştu',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -703,18 +681,17 @@ class _ShimmerGameCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        color: UIConstants.bgSecondary,
+        borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
       ),
       child: Shimmer.fromColors(
-        baseColor: Colors.white10,
-        highlightColor: Colors.white24,
+        baseColor: UIConstants.bgTertiary,
+        highlightColor: UIConstants.bgSecondary,
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 80,
-              height: 110,
+              width: 75,
+              height: 100,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -727,7 +704,7 @@ class _ShimmerGameCard extends StatelessWidget {
                 children: [
                   Container(
                     width: double.infinity,
-                    height: 20,
+                    height: 18,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
@@ -735,11 +712,11 @@ class _ShimmerGameCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Container(
-                    width: 100,
+                    width: 80,
                     height: 14,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -747,19 +724,19 @@ class _ShimmerGameCard extends StatelessWidget {
                     children: [
                       Container(
                         width: 60,
-                        height: 24,
+                        height: 22,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Container(
                         width: 60,
-                        height: 24,
+                        height: 22,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                       ),
                     ],

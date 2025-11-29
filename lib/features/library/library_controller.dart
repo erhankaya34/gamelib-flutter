@@ -47,11 +47,13 @@ class LibraryController extends AsyncNotifier<List<GameLog>> {
     }
 
     try {
-      appLogger.info('LibraryController: Loading games for user $userId');
+      appLogger.info('LibraryController: Loading collection for user $userId');
 
-      // Supabase'den oyunları fetch et
+      // Supabase'den koleksiyon ve wishlist oyunlarını fetch et
+      // Manuel eklenen + Steam wishlist'ten gelen oyunlar
+      // (Steam kütüphanesi ayrı ekranda, status='playing' olarak kaydediliyor)
       final repository = ref.read(gameRepositoryProvider);
-      final games = await repository.fetchUserGameLogs(userId);
+      final games = await repository.fetchCollectionAndWishlist(userId);
 
       appLogger.info('LibraryController: Loaded ${games.length} games');
       return games;

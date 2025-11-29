@@ -100,6 +100,125 @@ class ProfileRepository {
 
     return getProfile(userId);
   }
+
+  /// Update profile bio
+  Future<void> updateBio(String bio) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({'bio': bio})
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to update bio: $e');
+    }
+  }
+
+  /// Update profile avatar
+  Future<void> updateAvatar(String avatarId) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({'avatar': avatarId})
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to update avatar: $e');
+    }
+  }
+
+  /// Update profile background image
+  Future<void> updateBackgroundImage(String backgroundId) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({'background_image': backgroundId})
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to update background: $e');
+    }
+  }
+
+  /// Link Steam account
+  Future<void> linkSteamAccount(String steamId, Map<String, dynamic> steamData) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({
+            'steam_id': steamId,
+            'steam_data': steamData,
+          })
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to link Steam account: $e');
+    }
+  }
+
+  /// Unlink Steam account
+  Future<void> unlinkSteamAccount() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({
+            'steam_id': null,
+            'steam_data': null,
+          })
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to unlink Steam account: $e');
+    }
+  }
+
+  /// Update all profile customization at once
+  Future<void> updateProfileCustomization({
+    String? bio,
+    String? avatar,
+    String? backgroundImage,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      final updates = <String, dynamic>{};
+      if (bio != null) updates['bio'] = bio;
+      if (avatar != null) updates['avatar'] = avatar;
+      if (backgroundImage != null) updates['background_image'] = backgroundImage;
+
+      if (updates.isEmpty) return;
+
+      await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to update profile: $e');
+    }
+  }
 }
 
 /// Provider for ProfileRepository

@@ -124,11 +124,17 @@ class GameRepository {
         'status': log.status.name, // enum → string ('completed', 'wishlist', etc.)
         'rating': log.rating,
         'notes': log.notes,
+        'source': log.source, // 'manual', 'steam', or 'steam_wishlist'
         'updated_at': DateTime.now().toIso8601String(),
+        // Steam-specific fields
+        if (log.steamAppId != null) 'steam_app_id': log.steamAppId,
+        'playtime_minutes': log.playtimeMinutes,
+        if (log.lastSyncedAt != null)
+          'last_synced_at': log.lastSyncedAt!.toIso8601String(),
       };
 
       // Debug log
-      appLogger.info('Saving coverUrl: ${data['game_cover_url']}');
+      appLogger.info('Saving coverUrl: ${data['game_cover_url']}, playtime: ${log.playtimeMinutes} min');
 
       // Supabase'e kaydet (eğer id varsa güncelle, yoksa ekle)
       await supabase.from('game_logs').upsert(data);
@@ -312,6 +318,234 @@ class GameRepository {
       }).toList();
     } catch (e, stack) {
       appLogger.error('Failed to fetch games by status $status', e, stack);
+      rethrow;
+    }
+  }
+
+  // ============================================
+  // STEAM LIBRARY İŞLEMLERİ (Steam Entegrasyonu)
+  // ============================================
+
+  /// Steam kütüphanesinden gelen oyunları getir
+  ///
+  /// [userId] - Kullanıcı ID'si
+  /// Returns: Steam'den import edilen oyunlar (oynama saatine göre sıralı)
+  ///
+  /// Örnek:
+  /// ```dart
+  /// final steamGames = await repo.fetchSteamLibrary('user-123');
+  /// print('Steam: ${steamGames.length} oyun');
+  /// ```
+  Future<List<GameLog>> fetchSteamLibrary(String userId) async {
+    try {
+      appLogger.info('Fetching Steam library for user: $userId');
+
+      final response = await supabase
+          .from('game_logs')
+          .select()
+          .eq('user_id', userId)
+          .eq('source', 'steam')
+          .order('playtime_minutes', ascending: false);
+
+      appLogger.info('Fetched ${(response as List).length} Steam games');
+
+      return (response).map((json) {
+        final gameData = json['game_data'] as Map<String, dynamic>;
+        final coverUrl = json['game_cover_url'] as String?;
+
+        return GameLog.fromMap({
+          'id': json['id'],
+          'game': {
+            ...gameData,
+            'id': json['game_id'],
+            'name': json['game_name'],
+            if (coverUrl != null && coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+          },
+          'status': json['status'],
+          'rating': json['rating'],
+          'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+        });
+      }).toList();
+    } catch (e, stack) {
+      appLogger.error('Failed to fetch Steam library for user $userId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Manuel olarak eklenen oyunları getir (Koleksiyon)
+  ///
+  /// [userId] - Kullanıcı ID'si
+  /// Returns: Manuel eklenen oyunlar (tarih sırasına göre)
+  ///
+  /// Örnek:
+  /// ```dart
+  /// final manualGames = await repo.fetchManualCollection('user-123');
+  /// print('Manuel: ${manualGames.length} oyun');
+  /// ```
+  Future<List<GameLog>> fetchManualCollection(String userId) async {
+    try {
+      appLogger.info('Fetching manual collection for user: $userId');
+
+      final response = await supabase
+          .from('game_logs')
+          .select()
+          .eq('user_id', userId)
+          .eq('source', 'manual')
+          .order('created_at', ascending: false);
+
+      appLogger.info('Fetched ${(response as List).length} manual games');
+
+      return (response).map((json) {
+        final gameData = json['game_data'] as Map<String, dynamic>;
+        final coverUrl = json['game_cover_url'] as String?;
+
+        return GameLog.fromMap({
+          'id': json['id'],
+          'game': {
+            ...gameData,
+            'id': json['game_id'],
+            'name': json['game_name'],
+            if (coverUrl != null && coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+          },
+          'status': json['status'],
+          'rating': json['rating'],
+          'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+        });
+      }).toList();
+    } catch (e, stack) {
+      appLogger.error('Failed to fetch manual collection for user $userId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Koleksiyon ve istek listesi oyunlarını getir
+  /// Manuel eklenen + Steam wishlist'ten gelen tüm oyunları getirir
+  /// (Steam library'den gelen 'steam' source'lu oyunlar hariç)
+  ///
+  /// [userId] - Kullanıcı ID'si
+  /// Returns: Koleksiyon ve wishlist oyunları
+  Future<List<GameLog>> fetchCollectionAndWishlist(String userId) async {
+    try {
+      appLogger.info('Fetching collection and wishlist for user: $userId');
+
+      // Fetch manual and steam_wishlist sources
+      final response = await supabase
+          .from('game_logs')
+          .select()
+          .eq('user_id', userId)
+          .inFilter('source', ['manual', 'steam_wishlist'])
+          .order('created_at', ascending: false);
+
+      appLogger.info('Fetched ${(response as List).length} collection/wishlist games');
+
+      return (response).map((json) {
+        final gameData = json['game_data'] as Map<String, dynamic>;
+        final coverUrl = json['game_cover_url'] as String?;
+
+        return GameLog.fromMap({
+          'id': json['id'],
+          'game': {
+            ...gameData,
+            'id': json['game_id'],
+            'name': json['game_name'],
+            if (coverUrl != null && coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+          },
+          'status': json['status'],
+          'rating': json['rating'],
+          'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+        });
+      }).toList();
+    } catch (e, stack) {
+      appLogger.error('Failed to fetch collection/wishlist for user $userId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Steam App ID'sine göre oyun getir
+  ///
+  /// [userId] - Kullanıcı ID'si
+  /// [steamAppId] - Steam App ID
+  /// Returns: Oyun varsa GameLog, yoksa null
+  ///
+  /// Örnek:
+  /// ```dart
+  /// final game = await repo.getBySteamAppId('user-123', 730); // CS:GO
+  /// if (game != null) print('Oyun bulundu: ${game.game.name}');
+  /// ```
+  Future<GameLog?> getBySteamAppId(String userId, int steamAppId) async {
+    try {
+      appLogger.info('Fetching game by Steam App ID: $steamAppId for user $userId');
+
+      final response = await supabase
+          .from('game_logs')
+          .select()
+          .eq('user_id', userId)
+          .eq('steam_app_id', steamAppId)
+          .maybeSingle();
+
+      if (response == null) {
+        appLogger.info('No game found with Steam App ID: $steamAppId');
+        return null;
+      }
+
+      final gameData = response['game_data'] as Map<String, dynamic>;
+      final coverUrl = response['game_cover_url'] as String?;
+
+      return GameLog.fromMap({
+        'id': response['id'],
+        'game': {
+          ...gameData,
+          'id': response['game_id'],
+          'name': response['game_name'],
+          if (coverUrl != null && coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+        },
+        'status': response['status'],
+        'rating': response['rating'],
+        'notes': response['notes'],
+        'source': response['source'],
+        'steam_app_id': response['steam_app_id'],
+        'playtime_minutes': response['playtime_minutes'],
+        'last_synced_at': response['last_synced_at'],
+      });
+    } catch (e, stack) {
+      appLogger.error('Failed to fetch game by Steam App ID: $steamAppId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Oyun oynama saatini güncelle
+  ///
+  /// [gameLogId] - Oyun log ID'si
+  /// [playtimeMinutes] - Yeni oynama süresi (dakika)
+  ///
+  /// Örnek:
+  /// ```dart
+  /// await repo.updatePlaytime('game-123', 120); // 2 saat
+  /// ```
+  Future<void> updatePlaytime(String gameLogId, int playtimeMinutes) async {
+    try {
+      appLogger.info('Updating playtime for game: $gameLogId to $playtimeMinutes minutes');
+
+      await supabase.from('game_logs').update({
+        'playtime_minutes': playtimeMinutes,
+        'last_synced_at': DateTime.now().toIso8601String(),
+      }).eq('id', gameLogId);
+
+      appLogger.info('Successfully updated playtime');
+    } catch (e, stack) {
+      appLogger.error('Failed to update playtime for game $gameLogId', e, stack);
       rethrow;
     }
   }

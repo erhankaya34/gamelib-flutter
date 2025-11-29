@@ -1,182 +1,136 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme.dart';
+import '../../core/ui_constants.dart';
 import '../../data/igdb_client.dart';
-import '../../data/supabase_client.dart';
 import '../../models/game.dart';
 import '../search/game_detail_screen.dart';
+import '../steam_library/steam_library_provider.dart';
 
-/// Provider for user's favorite genres
-final userGenresProvider = FutureProvider<List<String>>((ref) async {
-  final supabase = ref.watch(supabaseProvider);
-  final userId = supabase.auth.currentUser?.id;
-  if (userId == null) return [];
+/// Provider for user's top genres based on most played games
+final topPlayedGenresProvider = FutureProvider<List<String>>((ref) async {
+  final steamLibrary = await ref.watch(steamLibraryProvider.future);
 
-  try {
-    final results = await supabase
-        .from('user_genres')
-        .select('genre_name')
-        .eq('user_id', userId);
-
-    return results.map((r) => r['genre_name'] as String).toList();
-  } catch (e) {
-    return [];
+  if (steamLibrary.isEmpty) {
+    // Fallback to default genres if no library
+    return ['Action', 'Adventure', 'RPG', 'Indie'];
   }
+
+  // Sort by playtime and get top 10 games
+  final sortedGames = [...steamLibrary]
+    ..sort((a, b) => b.playtimeMinutes.compareTo(a.playtimeMinutes));
+
+  final topGames = sortedGames.take(10).toList();
+
+  // Count genre occurrences weighted by playtime
+  final genreScores = <String, double>{};
+
+  for (final log in topGames) {
+    final playtimeWeight = log.playtimeMinutes.toDouble();
+    for (final genre in log.game.genres) {
+      genreScores[genre] = (genreScores[genre] ?? 0) + playtimeWeight;
+    }
+  }
+
+  // Sort by score and get top genres
+  final sortedGenres = genreScores.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+
+  final topGenres = sortedGenres.take(5).map((e) => e.key).toList();
+
+  if (topGenres.isEmpty) {
+    return ['Action', 'Adventure', 'RPG', 'Indie'];
+  }
+
+  return topGenres;
 });
 
-/// Provider for indie games
-final indieGamesProvider = FutureProvider<List<Game>>((ref) async {
-  final genresAsync = await ref.watch(userGenresProvider.future);
+/// Provider for indie games based on user's top played genres
+/// Filters out games already in user's Steam library
+final personalizedIndieGamesProvider = FutureProvider<List<Game>>((ref) async {
+  final topGenres = await ref.watch(topPlayedGenresProvider.future);
+  final steamLibrary = await ref.watch(steamLibraryProvider.future);
   final client = ref.read(igdbClientProvider);
-  return client.fetchIndieGames(genresAsync);
+
+  // Get all IGDB game IDs from user's Steam library
+  final ownedGameIds = steamLibrary.map((log) => log.game.id).toSet();
+
+  // Fetch indie games
+  final indieGames = await client.fetchIndieGames(topGenres);
+
+  // Filter out games already in library and ensure good rating (60+)
+  final filteredGames = indieGames.where((game) {
+    // Exclude games already owned
+    if (ownedGameIds.contains(game.id)) return false;
+
+    // Ensure medium+ rating (60+) or no rating (give benefit of doubt)
+    final rating = game.aggregatedRating ?? game.userRating;
+    if (rating != null && rating < 60) return false;
+
+    return true;
+  }).toList();
+
+  return filteredGames;
 });
 
 /// Discover screen
-/// Shows indie games personalized to user's favorite genres
+/// Shows indie games personalized based on user's most played game genres
 class DiscoverScreen extends ConsumerWidget {
   const DiscoverScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final indieGamesAsync = ref.watch(indieGamesProvider);
+    final indieGamesAsync = ref.watch(personalizedIndieGamesProvider);
+    final topGenresAsync = ref.watch(topPlayedGenresProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.deepNavy,
+      backgroundColor: UIConstants.bgPrimary,
       body: SafeArea(
         child: Column(
           children: [
-            // Header with mint gradient
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.mint.withOpacity(0.2),
-                    AppTheme.rose.withOpacity(0.2),
-                  ],
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.explore,
-                        color: AppTheme.mint,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Keşfet',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.cream,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Bağımsız oyunları keşfet',
-                    style: TextStyle(
-                      color: AppTheme.lavenderGray,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
+            // Header
+            _DiscoverHeader(
+              onRefresh: () {
+                ref.invalidate(personalizedIndieGamesProvider);
+                ref.invalidate(topPlayedGenresProvider);
+              },
+            ),
+
+            // Top genres display
+            topGenresAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (genres) => _GenreChipsRow(genres: genres),
             ),
 
             // Indie games grid
             Expanded(
               child: indieGamesAsync.when(
-                loading: () => const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation(AppTheme.mint),
-                  ),
-                ),
-                error: (e, _) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 64,
-                          color: Colors.red.withOpacity(0.7),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Oyunlar yüklenemedi',
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '$e',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppTheme.lavenderGray,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                loading: () => const LoadingState(message: 'Oyunlar yükleniyor...'),
+                error: (e, _) => _ErrorState(
+                  message: 'Oyunlar yüklenemedi: $e',
+                  onRetry: () => ref.invalidate(personalizedIndieGamesProvider),
                 ),
                 data: (games) {
                   if (games.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(40),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.videogame_asset_off,
-                              size: 80,
-                              color: AppTheme.lavenderGray.withOpacity(0.5),
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Henüz oyun bulunamadı',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.cream,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Daha sonra tekrar dene!',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: AppTheme.lavenderGray,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    return const EmptyState(
+                      icon: Icons.videogame_asset_off_rounded,
+                      title: 'Henüz oyun bulunamadı',
+                      subtitle: 'Daha sonra tekrar dene!',
+                      iconColor: UIConstants.accentGreen,
                     );
                   }
 
                   return RefreshIndicator(
                     onRefresh: () async {
-                      ref.invalidate(indieGamesProvider);
+                      ref.invalidate(personalizedIndieGamesProvider);
                     },
-                    color: AppTheme.mint,
+                    color: UIConstants.accentGreen,
+                    backgroundColor: UIConstants.bgSecondary,
                     child: GridView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(UIConstants.pagePadding),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         mainAxisSpacing: 16,
@@ -185,7 +139,13 @@ class DiscoverScreen extends ConsumerWidget {
                       ),
                       itemCount: games.length,
                       itemBuilder: (context, index) {
-                        return _IndieGameCard(game: games[index]);
+                        return _IndieGameCard(game: games[index])
+                            .animate()
+                            .fadeIn(
+                              delay: Duration(milliseconds: 50 * (index % 10)),
+                              duration: 400.ms,
+                            )
+                            .scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1));
                       },
                     ),
                   );
@@ -199,7 +159,302 @@ class DiscoverScreen extends ConsumerWidget {
   }
 }
 
-/// Indie game card with beautiful design
+// ============================================
+// DISCOVER HEADER
+// ============================================
+
+class _DiscoverHeader extends StatelessWidget {
+  const _DiscoverHeader({required this.onRefresh});
+
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UIConstants.pagePadding,
+        16,
+        UIConstants.pagePadding,
+        8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 28,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: UIConstants.greenGradient),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'KEŞFET',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onRefresh,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: UIConstants.accentGreen.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(UIConstants.radiusSmall),
+                    border: Border.all(
+                      color: UIConstants.accentGreen.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    color: UIConstants.accentGreen,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: UIConstants.accentGreen.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+              border: Border.all(
+                color: UIConstants.accentGreen.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: UIConstants.greenGradient),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'En Çok Oynadığın Türlerden',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Bağımsız oyunları keşfet',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// GENRE CHIPS ROW
+// ============================================
+
+class _GenreChipsRow extends StatelessWidget {
+  const _GenreChipsRow({required this.genres});
+
+  final List<String> genres;
+
+  @override
+  Widget build(BuildContext context) {
+    if (genres.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UIConstants.pagePadding,
+        8,
+        UIConstants.pagePadding,
+        8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sevdiğin türler:',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: genres.asMap().entries.map((entry) {
+                final index = entry.key;
+                final genre = entry.value;
+                final gradients = [
+                  UIConstants.greenGradient,
+                  UIConstants.purpleGradient,
+                  UIConstants.violetGradient,
+                  UIConstants.yellowGradient,
+                ];
+                final gradient = gradients[index % gradients.length];
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          gradient[0].withOpacity(0.2),
+                          gradient[1].withOpacity(0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: gradient[0].withOpacity(0.4),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.local_fire_department_rounded,
+                          size: 14,
+                          color: gradient[0],
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          genre,
+                          style: TextStyle(
+                            color: gradient[0],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms);
+  }
+}
+
+// ============================================
+// ERROR STATE
+// ============================================
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: UIConstants.accentRed.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.error_outline_rounded,
+                size: 40,
+                color: UIConstants.accentRed,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: onRetry,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: UIConstants.bgSecondary,
+                  borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  'Tekrar Dene',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================
+// INDIE GAME CARD
+// ============================================
+
 class _IndieGameCard extends StatelessWidget {
   const _IndieGameCard({required this.game});
 
@@ -207,31 +462,23 @@ class _IndieGameCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.mint.withOpacity(0.1),
-            AppTheme.rose.withOpacity(0.1),
-          ],
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => GameDetailScreen(game: game),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+          color: UIConstants.bgSecondary,
+          border: Border.all(
+            color: UIConstants.accentGreen.withOpacity(0.2),
+            width: 1,
+          ),
         ),
-        border: Border.all(
-          color: AppTheme.mint.withOpacity(0.3),
-          width: 1.5,
-        ),
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => GameDetailScreen(game: game),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -243,20 +490,29 @@ class _IndieGameCard extends StatelessWidget {
                   if (game.coverUrl != null)
                     ClipRRect(
                       borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
+                        topLeft: Radius.circular(UIConstants.radiusLarge),
+                        topRight: Radius.circular(UIConstants.radiusLarge),
                       ),
-                      child: Image.network(
-                        game.coverUrl!.replaceAll('t_thumb', 't_cover_big'),
+                      child: CachedNetworkImage(
+                        imageUrl: game.coverUrl!.replaceAll('t_thumb', 't_cover_big'),
                         width: double.infinity,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AppTheme.darkSlate,
+                        placeholder: (context, url) => Container(
+                          color: UIConstants.bgTertiary,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: UIConstants.accentGreen,
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: UIConstants.bgTertiary,
                           child: Center(
                             child: Icon(
-                              Icons.videogame_asset,
-                              color: AppTheme.lavenderGray,
-                              size: 48,
+                              Icons.videogame_asset_rounded,
+                              color: Colors.white.withOpacity(0.3),
+                              size: 40,
                             ),
                           ),
                         ),
@@ -265,17 +521,17 @@ class _IndieGameCard extends StatelessWidget {
                   else
                     Container(
                       decoration: BoxDecoration(
-                        color: AppTheme.darkSlate,
+                        color: UIConstants.bgTertiary,
                         borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          topRight: Radius.circular(16),
+                          topLeft: Radius.circular(UIConstants.radiusLarge),
+                          topRight: Radius.circular(UIConstants.radiusLarge),
                         ),
                       ),
                       child: Center(
                         child: Icon(
-                          Icons.videogame_asset,
-                          color: AppTheme.lavenderGray,
-                          size: 48,
+                          Icons.videogame_asset_rounded,
+                          color: Colors.white.withOpacity(0.3),
+                          size: 40,
                         ),
                       ),
                     ),
@@ -290,33 +546,33 @@ class _IndieGameCard extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppTheme.mint, AppTheme.rose],
+                        gradient: const LinearGradient(
+                          colors: UIConstants.greenGradient,
                         ),
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 4,
+                            color: UIConstants.accentGreen.withOpacity(0.4),
+                            blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                      child: Row(
+                      child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.auto_awesome,
+                            Icons.auto_awesome_rounded,
                             color: Colors.white,
                             size: 12,
                           ),
-                          const SizedBox(width: 4),
-                          const Text(
+                          SizedBox(width: 4),
+                          Text(
                             'Indie',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -337,15 +593,15 @@ class _IndieGameCard extends StatelessWidget {
                   Text(
                     game.name,
                     style: const TextStyle(
-                      color: AppTheme.cream,
+                      color: Colors.white,
                       fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
 
                   // Genres
                   if (game.genres.isNotEmpty)
@@ -359,48 +615,48 @@ class _IndieGameCard extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.mint.withOpacity(0.2),
+                            color: UIConstants.accentGreen.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                              color: AppTheme.mint.withOpacity(0.3),
+                              color: UIConstants.accentGreen.withOpacity(0.3),
                             ),
                           ),
                           child: Text(
                             genre,
                             style: TextStyle(
-                              color: AppTheme.mint,
+                              color: UIConstants.accentGreen,
                               fontSize: 9,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         );
                       }).toList(),
                     ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
 
                   // Rating
                   if (game.aggregatedRating != null)
                     Row(
                       children: [
                         Icon(
-                          Icons.star,
-                          color: AppTheme.peach,
+                          Icons.star_rounded,
+                          color: UIConstants.accentYellow,
                           size: 14,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           game.aggregatedRating!.toStringAsFixed(0),
                           style: TextStyle(
-                            color: AppTheme.peach,
+                            color: UIConstants.accentYellow,
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         Text(
                           '/100',
                           style: TextStyle(
-                            color: AppTheme.lavenderGray,
+                            color: Colors.white.withOpacity(0.4),
                             fontSize: 10,
                           ),
                         ),

@@ -29,9 +29,66 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final controller = ref.read(authControllerProvider.notifier);
+    final email = _emailController.text.trim();
+
     await controller.signIn(
-      email: _emailController.text.trim(),
+      email: email,
       password: _passwordController.text,
+    );
+
+    // Check if login failed - offer to register
+    if (mounted) {
+      final authState = ref.read(authControllerProvider);
+      if (authState.hasError) {
+        final errorMessage = authState.error.toString().toLowerCase();
+        // For "invalid credentials" error, offer to register
+        // (could be non-existent user or wrong password, but we offer register anyway)
+        if (errorMessage.contains('hatalı') ||
+            errorMessage.contains('invalid')) {
+          // Wait a bit so user can see the error message
+          await Future.delayed(const Duration(milliseconds: 1500));
+          if (mounted) {
+            _showRegisterDialog(email);
+          }
+        }
+      }
+    }
+  }
+
+  void _showRegisterDialog(String email) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.slate,
+        title: const Text(
+          'Kullanıcı Bulunamadı',
+          style: TextStyle(color: AppTheme.cream),
+        ),
+        content: Text(
+          'Bu e-posta ile kayıtlı bir kullanıcı bulunamadı. Hesap oluşturmak ister misiniz?',
+          style: TextStyle(color: AppTheme.lavenderGray),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => RegisterScreen(initialEmail: email),
+                ),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.lavender,
+            ),
+            child: const Text('Hesap Oluştur'),
+          ),
+        ],
+      ),
     );
   }
 
