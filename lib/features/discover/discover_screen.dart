@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/logger.dart';
 import '../../core/ui_constants.dart';
 import '../../data/igdb_client.dart';
 import '../../models/game.dart';
@@ -11,67 +12,78 @@ import '../steam_library/steam_library_provider.dart';
 
 /// Provider for user's top genres based on most played games
 final topPlayedGenresProvider = FutureProvider<List<String>>((ref) async {
-  final steamLibrary = await ref.watch(steamLibraryProvider.future);
+  try {
+    final steamLibrary = await ref.watch(steamLibraryProvider.future);
 
-  if (steamLibrary.isEmpty) {
-    // Fallback to default genres if no library
-    return ['Action', 'Adventure', 'RPG', 'Indie'];
-  }
-
-  // Sort by playtime and get top 10 games
-  final sortedGames = [...steamLibrary]
-    ..sort((a, b) => b.playtimeMinutes.compareTo(a.playtimeMinutes));
-
-  final topGames = sortedGames.take(10).toList();
-
-  // Count genre occurrences weighted by playtime
-  final genreScores = <String, double>{};
-
-  for (final log in topGames) {
-    final playtimeWeight = log.playtimeMinutes.toDouble();
-    for (final genre in log.game.genres) {
-      genreScores[genre] = (genreScores[genre] ?? 0) + playtimeWeight;
+    if (steamLibrary.isEmpty) {
+      // Fallback to popular IGDB genres if no library
+      return ['Action', 'Adventure', 'Role-playing (RPG)', 'Shooter'];
     }
+
+    // Sort by playtime and get top 10 games
+    final sortedGames = [...steamLibrary]
+      ..sort((a, b) => b.playtimeMinutes.compareTo(a.playtimeMinutes));
+
+    final topGames = sortedGames.take(10).toList();
+
+    // Count genre occurrences weighted by playtime
+    final genreScores = <String, double>{};
+
+    for (final log in topGames) {
+      final playtimeWeight = log.playtimeMinutes.toDouble();
+      for (final genre in log.game.genres) {
+        genreScores[genre] = (genreScores[genre] ?? 0) + playtimeWeight;
+      }
+    }
+
+    // Sort by score and get top genres
+    final sortedGenres = genreScores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final topGenres = sortedGenres.take(5).map((e) => e.key).toList();
+
+    if (topGenres.isEmpty) {
+      return ['Action', 'Adventure', 'Role-playing (RPG)', 'Shooter'];
+    }
+
+    return topGenres;
+  } catch (e) {
+    // Fallback if Steam library fails
+    return ['Action', 'Adventure', 'Role-playing (RPG)', 'Shooter'];
   }
-
-  // Sort by score and get top genres
-  final sortedGenres = genreScores.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
-
-  final topGenres = sortedGenres.take(5).map((e) => e.key).toList();
-
-  if (topGenres.isEmpty) {
-    return ['Action', 'Adventure', 'RPG', 'Indie'];
-  }
-
-  return topGenres;
 });
 
 /// Provider for indie games based on user's top played genres
 /// Filters out games already in user's Steam library
 final personalizedIndieGamesProvider = FutureProvider<List<Game>>((ref) async {
   final topGenres = await ref.watch(topPlayedGenresProvider.future);
-  final steamLibrary = await ref.watch(steamLibraryProvider.future);
   final client = ref.read(igdbClientProvider);
 
-  // Get all IGDB game IDs from user's Steam library
-  final ownedGameIds = steamLibrary.map((log) => log.game.id).toSet();
+  appLogger.info('Discover: Top genres = $topGenres');
+
+  // Try to get owned game IDs, but don't fail if Steam library is unavailable
+  Set<int> ownedGameIds = {};
+  try {
+    final steamLibrary = await ref.watch(steamLibraryProvider.future);
+    ownedGameIds = steamLibrary.map((log) => log.game.id).toSet();
+    appLogger.info('Discover: Owned game IDs count = ${ownedGameIds.length}');
+  } catch (e) {
+    appLogger.info('Discover: Steam library unavailable, continuing without filter');
+  }
 
   // Fetch indie games
+  appLogger.info('Discover: Fetching indie games...');
   final indieGames = await client.fetchIndieGames(topGenres);
+  appLogger.info('Discover: Fetched ${indieGames.length} indie games from IGDB');
 
-  // Filter out games already in library and ensure good rating (60+)
+  // Filter out games already in library
   final filteredGames = indieGames.where((game) {
     // Exclude games already owned
     if (ownedGameIds.contains(game.id)) return false;
-
-    // Ensure medium+ rating (60+) or no rating (give benefit of doubt)
-    final rating = game.aggregatedRating ?? game.userRating;
-    if (rating != null && rating < 60) return false;
-
     return true;
   }).toList();
 
+  appLogger.info('Discover: After filtering = ${filteredGames.length} games');
   return filteredGames;
 });
 

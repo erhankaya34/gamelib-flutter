@@ -149,6 +149,47 @@ class LibraryController extends AsyncNotifier<List<GameLog>> {
     }
   }
 
+  /// Değerlendirmeyi temizle (rating ve notes'u null yap)
+  ///
+  /// [logId] - Temizlenecek oyun log'unun ID'si
+  ///
+  /// Bu method:
+  /// 1. Supabase'de rating ve notes'u null yapar
+  /// 2. Başarılıysa local state'i günceller
+  /// 3. Oyun kütüphaneden SİLİNMEZ, sadece değerlendirme temizlenir
+  ///
+  /// Örnek:
+  /// ```dart
+  /// await ref.read(libraryControllerProvider.notifier).clearReview('game-123');
+  /// ```
+  Future<void> clearReview(String logId) async {
+    try {
+      appLogger.info('LibraryController: Clearing review for game $logId');
+
+      // 1. Supabase'de değerlendirmeyi temizle
+      final repository = ref.read(gameRepositoryProvider);
+      await repository.clearReview(logId);
+
+      // 2. Local state'i güncelle (rating ve notes'u null yap)
+      final currentGames = state.valueOrNull ?? [];
+      final gameIndex = currentGames.indexWhere((g) => g.id == logId);
+
+      if (gameIndex != -1) {
+        final updated = [...currentGames];
+        updated[gameIndex] = updated[gameIndex].copyWith(
+          clearRating: true,
+          clearNotes: true,
+        );
+        state = AsyncData(updated);
+      }
+
+      appLogger.info('LibraryController: Successfully cleared review for game $logId');
+    } catch (e, stack) {
+      appLogger.error('LibraryController: Failed to clear review', e, stack);
+      rethrow;
+    }
+  }
+
   /// Oyunun kütüphanede olup olmadığını kontrol et
   ///
   /// [gameId] - IGDB game ID

@@ -80,6 +80,12 @@ class GameRepository {
           'status': json['status'],
           'rating': json['rating'],
           'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'psn_title_id': json['psn_title_id'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
         });
       }).toList();
     } catch (e, stack) {
@@ -124,10 +130,15 @@ class GameRepository {
         'status': log.status.name, // enum → string ('completed', 'wishlist', etc.)
         'rating': log.rating,
         'notes': log.notes,
-        'source': log.source, // 'manual', 'steam', or 'steam_wishlist'
+        'source': log.source, // 'manual', 'steam', 'playstation', 'lol', 'valorant', 'tft'
         'updated_at': DateTime.now().toIso8601String(),
         // Steam-specific fields
         if (log.steamAppId != null) 'steam_app_id': log.steamAppId,
+        // PlayStation-specific fields
+        if (log.psnTitleId != null) 'psn_title_id': log.psnTitleId,
+        // Riot Games-specific fields
+        if (log.riotGameId != null) 'riot_game_id': log.riotGameId,
+        if (log.riotRankedData != null) 'riot_ranked_data': log.riotRankedData,
         'playtime_minutes': log.playtimeMinutes,
         if (log.lastSyncedAt != null)
           'last_synced_at': log.lastSyncedAt!.toIso8601String(),
@@ -136,8 +147,12 @@ class GameRepository {
       // Debug log
       appLogger.info('Saving coverUrl: ${data['game_cover_url']}, playtime: ${log.playtimeMinutes} min');
 
-      // Supabase'e kaydet (eğer id varsa güncelle, yoksa ekle)
-      await supabase.from('game_logs').upsert(data);
+      // Supabase'e kaydet
+      // onConflict: user_id,game_id -> aynı oyun varsa güncelle, yoksa ekle
+      await supabase.from('game_logs').upsert(
+        data,
+        onConflict: 'user_id,game_id',
+      );
 
       appLogger.info('Successfully upserted game: ${log.game.name}');
     } catch (e, stack) {
@@ -163,6 +178,32 @@ class GameRepository {
       appLogger.info('Successfully deleted game log: $logId');
     } catch (e, stack) {
       appLogger.error('Failed to delete game log: $logId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Değerlendirmeyi sil (rating ve notes'u null yap)
+  /// Oyun kütüphaneden silinmez, sadece puan ve yorum temizlenir.
+  ///
+  /// [logId] - Oyun log'unun ID'si
+  ///
+  /// Örnek:
+  /// ```dart
+  /// await repo.clearReview('game-123');
+  /// ```
+  Future<void> clearReview(String logId) async {
+    try {
+      appLogger.info('Clearing review for game log: $logId');
+
+      await supabase.from('game_logs').update({
+        'rating': null,
+        'notes': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', logId);
+
+      appLogger.info('Successfully cleared review for game log: $logId');
+    } catch (e, stack) {
+      appLogger.error('Failed to clear review for game log: $logId', e, stack);
       rethrow;
     }
   }
@@ -314,6 +355,12 @@ class GameRepository {
           'status': json['status'],
           'rating': json['rating'],
           'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'psn_title_id': json['psn_title_id'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
         });
       }).toList();
     } catch (e, stack) {
@@ -340,11 +387,14 @@ class GameRepository {
     try {
       appLogger.info('Fetching Steam library for user: $userId');
 
+      // Fetch games that are either:
+      // 1. source='steam' (directly imported from Steam)
+      // 2. have steam_app_id (linked to Steam even if source is different)
       final response = await supabase
           .from('game_logs')
           .select()
           .eq('user_id', userId)
-          .eq('source', 'steam')
+          .or('source.eq.steam,steam_app_id.not.is.null')
           .order('playtime_minutes', ascending: false);
 
       appLogger.info('Fetched ${(response as List).length} Steam games');
@@ -366,8 +416,10 @@ class GameRepository {
           'notes': json['notes'],
           'source': json['source'],
           'steam_app_id': json['steam_app_id'],
+          'psn_title_id': json['psn_title_id'],
           'playtime_minutes': json['playtime_minutes'],
           'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
         });
       }).toList();
     } catch (e, stack) {
@@ -418,6 +470,7 @@ class GameRepository {
           'steam_app_id': json['steam_app_id'],
           'playtime_minutes': json['playtime_minutes'],
           'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
         });
       }).toList();
     } catch (e, stack) {
@@ -427,21 +480,21 @@ class GameRepository {
   }
 
   /// Koleksiyon ve istek listesi oyunlarını getir
-  /// Manuel eklenen + Steam wishlist'ten gelen tüm oyunları getirir
-  /// (Steam library'den gelen 'steam' source'lu oyunlar hariç)
+  /// Manuel eklenen + Steam + PlayStation oyunlarını getirir
+  /// (İstek listesi sadece uygulama içi, Steam'den çekilmiyor)
   ///
   /// [userId] - Kullanıcı ID'si
-  /// Returns: Koleksiyon ve wishlist oyunları
+  /// Returns: Tüm kullanıcı oyunları
   Future<List<GameLog>> fetchCollectionAndWishlist(String userId) async {
     try {
       appLogger.info('Fetching collection and wishlist for user: $userId');
 
-      // Fetch manual and steam_wishlist sources
+      // Fetch all sources: manual, steam, playstation
       final response = await supabase
           .from('game_logs')
           .select()
           .eq('user_id', userId)
-          .inFilter('source', ['manual', 'steam_wishlist'])
+          .inFilter('source', ['manual', 'steam', 'playstation'])
           .order('created_at', ascending: false);
 
       appLogger.info('Fetched ${(response as List).length} collection/wishlist games');
@@ -463,12 +516,121 @@ class GameRepository {
           'notes': json['notes'],
           'source': json['source'],
           'steam_app_id': json['steam_app_id'],
+          'psn_title_id': json['psn_title_id'],
           'playtime_minutes': json['playtime_minutes'],
           'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
         });
       }).toList();
     } catch (e, stack) {
       appLogger.error('Failed to fetch collection/wishlist for user $userId', e, stack);
+      rethrow;
+    }
+  }
+
+  // ============================================
+  // PLAYSTATION LIBRARY İŞLEMLERİ (PlayStation Entegrasyonu)
+  // ============================================
+
+  /// PlayStation kütüphanesinden gelen oyunları getir
+  ///
+  /// [userId] - Kullanıcı ID'si
+  /// Returns: PlayStation'dan import edilen oyunlar
+  Future<List<GameLog>> fetchPlayStationLibrary(String userId) async {
+    try {
+      appLogger.info('Fetching PlayStation library for user: $userId');
+
+      // Fetch games that are either:
+      // 1. source='playstation' (directly imported from PSN)
+      // 2. have psn_title_id (linked to PSN even if source is different)
+      final response = await supabase
+          .from('game_logs')
+          .select()
+          .eq('user_id', userId)
+          .or('source.eq.playstation,psn_title_id.not.is.null')
+          .order('playtime_minutes', ascending: false);
+
+      appLogger.info('Fetched ${(response as List).length} PlayStation games');
+
+      return (response).map((json) {
+        final gameData = json['game_data'] as Map<String, dynamic>;
+        final coverUrl = json['game_cover_url'] as String?;
+
+        return GameLog.fromMap({
+          'id': json['id'],
+          'game': {
+            ...gameData,
+            'id': json['game_id'],
+            'name': json['game_name'],
+            if (coverUrl != null && coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+          },
+          'status': json['status'],
+          'rating': json['rating'],
+          'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'psn_title_id': json['psn_title_id'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
+        });
+      }).toList();
+    } catch (e, stack) {
+      appLogger.error('Failed to fetch PlayStation library for user $userId', e, stack);
+      rethrow;
+    }
+  }
+
+  // ============================================
+  // RIOT LIBRARY İŞLEMLERİ (Riot Games Entegrasyonu)
+  // ============================================
+
+  /// Riot Games kütüphanesinden gelen oyunları getir (LoL, Valorant, TFT)
+  ///
+  /// [userId] - Kullanıcı ID'si
+  /// Returns: Riot Games'ten import edilen oyunlar
+  Future<List<GameLog>> fetchRiotLibrary(String userId) async {
+    try {
+      appLogger.info('Fetching Riot library for user: $userId');
+
+      // Fetch games that are from Riot by source
+      // Source can be 'lol', 'valorant', or 'tft'
+      final response = await supabase
+          .from('game_logs')
+          .select()
+          .eq('user_id', userId)
+          .inFilter('source', ['lol', 'valorant', 'tft'])
+          .order('created_at', ascending: false);
+
+      appLogger.info('Fetched ${(response as List).length} Riot games');
+
+      return (response).map((json) {
+        final gameData = json['game_data'] as Map<String, dynamic>;
+        final coverUrl = json['game_cover_url'] as String?;
+
+        return GameLog.fromMap({
+          'id': json['id'],
+          'game': {
+            ...gameData,
+            'id': json['game_id'],
+            'name': json['game_name'],
+            if (coverUrl != null && coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+          },
+          'status': json['status'],
+          'rating': json['rating'],
+          'notes': json['notes'],
+          'source': json['source'],
+          'steam_app_id': json['steam_app_id'],
+          'psn_title_id': json['psn_title_id'],
+          'riot_game_id': json['riot_game_id'],
+          'riot_ranked_data': json['riot_ranked_data'],
+          'playtime_minutes': json['playtime_minutes'],
+          'last_synced_at': json['last_synced_at'],
+          'created_at': json['created_at'],
+        });
+      }).toList();
+    } catch (e, stack) {
+      appLogger.error('Failed to fetch Riot library for user $userId', e, stack);
       rethrow;
     }
   }
@@ -518,6 +680,7 @@ class GameRepository {
         'steam_app_id': response['steam_app_id'],
         'playtime_minutes': response['playtime_minutes'],
         'last_synced_at': response['last_synced_at'],
+        'created_at': response['created_at'],
       });
     } catch (e, stack) {
       appLogger.error('Failed to fetch game by Steam App ID: $steamAppId', e, stack);

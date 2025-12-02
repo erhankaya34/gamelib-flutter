@@ -22,6 +22,23 @@ class UIConstants {
   static const Color accentSteam = Color(0xFF66c0f4);
   static const Color bgSteam = Color(0xFF1b2838);
 
+  // PLAYBACK Fire theme colors
+  static const Color fireOrange = Color(0xFFFF6B35);
+  static const Color fireRed = Color(0xFFE63946);
+  static const Color fireYellow = Color(0xFFFFB627);
+  static const Color fireGlow = Color(0xFFFF9F1C);
+  static const Color fireDarkBg = Color(0xFF0D0D0D);
+  static const Color fireEmber = Color(0xFFFF4D00);
+
+  // Platform color (unified for all platforms: Steam, PlayStation, Epic, etc.)
+  static const Color accentPlatform = Color(0xFF66c0f4);
+
+  // Legacy PlayStation colors (deprecated - use accentPlatform instead)
+  @Deprecated('Use accentPlatform instead for unified platform colors')
+  static const Color accentPlayStation = Color(0xFF66c0f4);
+  @Deprecated('Use accentPlatform instead for unified platform colors')
+  static const Color accentPlayStationLight = Color(0xFF66c0f4);
+
   // Text colors
   static const Color textPrimary = Colors.white;
   static Color textSecondary = Colors.white.withOpacity(0.7);
@@ -35,6 +52,11 @@ class UIConstants {
   static const yellowGradient = [Color(0xFFf59e0b), Color(0xFFfbbf24)];
   static const redGradient = [Color(0xFFef4444), Color(0xFFf87171)];
   static const steamGradient = [Color(0xFF66c0f4), Color(0xFF4fa8d5)];
+  static const platformGradient = [Color(0xFF66c0f4), Color(0xFF4fa8d5)];
+  static const fireGradient = [Color(0xFFFF6B35), Color(0xFFE63946)];
+  static const fireGlowGradient = [Color(0xFFFFB627), Color(0xFFFF6B35), Color(0xFFE63946)];
+  @Deprecated('Use platformGradient instead for unified platform colors')
+  static const playstationGradient = [Color(0xFF66c0f4), Color(0xFF4fa8d5)];
 
   // Spacing
   static const double pagePadding = 20.0;

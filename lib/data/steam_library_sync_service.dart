@@ -84,8 +84,8 @@ class SteamLibrarySyncService {
       var updatedCount = 0;
       var failedCount = 0;
 
-      // First, get all existing Steam games in one query for faster lookups
-      final existingGamesMap = await _getExistingSteamGames(userId);
+      // First, get all existing games in one query for faster lookups
+      final existingGames = await _getExistingGames(userId);
 
       // Process games in large parallel batches for maximum speed
       const batchSize = 20;
@@ -98,18 +98,22 @@ class SteamLibrarySyncService {
             try {
               final igdbGame = matches[steamGame.appId];
 
-              // Check from pre-fetched map instead of querying each time
-              final exists = existingGamesMap.containsKey(steamGame.appId);
+              // Lookup existing ID from pre-fetched maps (no DB query needed!)
+              String? existingId = existingGames.bySteamAppId[steamGame.appId];
+              if (existingId == null && igdbGame != null) {
+                existingId = existingGames.byGameId[igdbGame.id];
+              }
 
-              final success = await _importSteamGame(
+              final success = await _importSteamGameFast(
                 userId: userId,
                 steamGame: steamGame,
                 igdbGame: igdbGame,
+                existingId: existingId,
               );
 
               return {
                 'success': success,
-                'exists': exists,
+                'exists': existingId != null,
                 'name': steamGame.name,
               };
             } catch (e, stack) {
@@ -162,28 +166,20 @@ class SteamLibrarySyncService {
     }
   }
 
-  /// Import a single Steam game to the database
+  /// Fast import - existing ID is pre-fetched, no DB query needed
   /// Returns true if successful, false otherwise
-  Future<bool> _importSteamGame({
+  Future<bool> _importSteamGameFast({
     required String userId,
     required SteamGame steamGame,
     required Game? igdbGame,
+    required String? existingId,
   }) async {
     try {
       // Create Game object from IGDB or Steam data
       final game = igdbGame ?? _createGameFromSteam(steamGame);
 
-      // Check if game already exists (by steam_app_id OR by game_id)
-      final existingId = await _getExistingGameLogId(
-        userId,
-        steamGame.appId,
-        gameId: game.id,
-      );
-
       if (existingId != null) {
         // Game exists - only update Steam-specific fields to preserve user data
-        // (status, rating, notes, etc. are not touched)
-        // Build update data - only standard columns
         final updateData = <String, dynamic>{
           'steam_app_id': steamGame.appId,
           'playtime_minutes': steamGame.playtimeMinutes,
@@ -194,7 +190,6 @@ class SteamLibrarySyncService {
         if (igdbGame != null) {
           updateData['game_name'] = game.name;
           updateData['game_cover_url'] = game.coverUrl;
-          // Store full game data in JSON column (toMap handles DateTime serialization)
           updateData['game_data'] = game.toMap();
         }
 
@@ -202,17 +197,12 @@ class SteamLibrarySyncService {
             .from('game_logs')
             .update(updateData)
             .eq('id', existingId);
-
-        appLogger.info(
-          'Steam Sync: Updated ${steamGame.name} '
-          '(${steamGame.playtimeMinutes ~/ 60}h played)',
-        );
       } else {
         // New game - do full insert
         final gameLog = GameLog(
           id: _uuid.v4(),
           game: game,
-          status: PlayStatus.playing, // Default status for Steam games
+          status: PlayStatus.playing,
           source: 'steam',
           steamAppId: steamGame.appId,
           playtimeMinutes: steamGame.playtimeMinutes,
@@ -220,11 +210,6 @@ class SteamLibrarySyncService {
         );
 
         await gameRepository.upsertGameLog(userId, gameLog);
-
-        appLogger.info(
-          'Steam Sync: Imported ${steamGame.name} '
-          '(${steamGame.playtimeMinutes ~/ 60}h played)',
-        );
       }
 
       return true;
@@ -311,36 +296,36 @@ class SteamLibrarySyncService {
     }
   }
 
-  /// Check if a game exists
-  Future<bool> _checkGameExists(String userId, int steamAppId) async {
-    final id = await _getExistingGameLogId(userId, steamAppId);
-    return id != null;
-  }
-
-  /// Get all existing Steam games for a user in one query
-  /// Returns a map of Steam App ID -> Game Log ID
-  Future<Map<int, String>> _getExistingSteamGames(String userId) async {
+  /// Get all existing games for a user in one query
+  /// Returns maps of Steam App ID -> Game Log ID and Game ID -> Game Log ID
+  Future<({Map<int, String> bySteamAppId, Map<int, String> byGameId})> _getExistingGames(String userId) async {
     try {
       final response = await gameRepository.supabase
           .from('game_logs')
-          .select('id, steam_app_id')
-          .eq('user_id', userId)
-          .eq('source', 'steam');
+          .select('id, steam_app_id, game_id')
+          .eq('user_id', userId);
 
-      final map = <int, String>{};
+      final bySteamAppId = <int, String>{};
+      final byGameId = <int, String>{};
+
       for (final row in response as List) {
-        final steamAppId = row['steam_app_id'] as int?;
         final id = row['id'] as String;
+        final steamAppId = row['steam_app_id'] as int?;
+        final gameId = row['game_id'] as int?;
+
         if (steamAppId != null) {
-          map[steamAppId] = id;
+          bySteamAppId[steamAppId] = id;
+        }
+        if (gameId != null) {
+          byGameId[gameId] = id;
         }
       }
 
-      appLogger.info('Steam Sync: Found ${map.length} existing Steam games');
-      return map;
+      appLogger.info('Steam Sync: Found ${bySteamAppId.length} by Steam ID, ${byGameId.length} by game ID');
+      return (bySteamAppId: bySteamAppId, byGameId: byGameId);
     } catch (e) {
       appLogger.warning('Steam Sync: Failed to fetch existing games: $e');
-      return {};
+      return (bySteamAppId: <int, String>{}, byGameId: <int, String>{});
     }
   }
 
@@ -472,29 +457,39 @@ class SteamLibrarySyncService {
       // Fetch Steam games
       final steamGames = await steamService.fetchOwnedGamesDetailed(steamId);
 
+      // Pre-fetch all existing games with steam_app_id in one query
+      final existingGames = await _getExistingGames(userId);
+
       var updatedCount = 0;
       var failedCount = 0;
+      final now = DateTime.now().toIso8601String();
 
-      // Update only existing games
-      for (final steamGame in steamGames) {
-        try {
-          final existingId = await _getExistingGameLogId(
-            userId,
-            steamGame.appId,
-          );
+      // Process in parallel batches
+      const batchSize = 20;
+      for (var i = 0; i < steamGames.length; i += batchSize) {
+        final batch = steamGames.skip(i).take(batchSize).toList();
 
-          if (existingId != null) {
-            // Update playtime
-            await gameRepository.supabase.from('game_logs').update({
-              'playtime_minutes': steamGame.playtimeMinutes,
-              'last_synced_at': DateTime.now().toIso8601String(),
-            }).eq('id', existingId);
+        final results = await Future.wait(
+          batch.map((steamGame) async {
+            try {
+              final existingId = existingGames.bySteamAppId[steamGame.appId];
 
-            updatedCount++;
-          }
-        } catch (e) {
-          failedCount++;
-        }
+              if (existingId != null) {
+                await gameRepository.supabase.from('game_logs').update({
+                  'playtime_minutes': steamGame.playtimeMinutes,
+                  'last_synced_at': now,
+                }).eq('id', existingId);
+                return true;
+              }
+              return false;
+            } catch (e) {
+              return false;
+            }
+          }),
+        );
+
+        updatedCount += results.where((r) => r).length;
+        failedCount += results.where((r) => !r).length;
       }
 
       final result = SyncResult(

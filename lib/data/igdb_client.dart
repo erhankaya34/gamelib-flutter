@@ -358,31 +358,33 @@ limit 50;
     final uri = Uri.parse('$_baseUrl/games');
     final currentYear = DateTime.now().year;
 
-    // IGDB doesn't have a direct "indie" flag, so we filter by:
-    // - Category 0 (main game)
-    // - Good ratings but not too mainstream (rating_count between 10-500)
+    // Simplified query - just get games with cover from recent years
+    // - Has cover image
     // - Recent years (last 10 years)
-    // - Match user's genres if available
     String whereClause = '''
-category = 0 &
-rating_count > 10 & rating_count < 500 &
-aggregated_rating > 65 &
+cover != null &
 first_release_date > ${DateTime(currentYear - 10).millisecondsSinceEpoch ~/ 1000}
 ''';
 
+    // Only filter by one genre to get more results
+    // Using multiple genres with = () uses AND logic which is too restrictive
     if (genreIds.isNotEmpty) {
-      final genreIdList = genreIds.join(',');
-      whereClause += ' & genres = ($genreIdList)';
+      // Use only the first (most played) genre for better results
+      final primaryGenreId = genreIds.first;
+      whereClause += ' & genres = $primaryGenreId';
+      appLogger.info('IGDB indie query: filtering by primary genre ${genreNames.isNotEmpty ? genreNames.first : "?"} -> ID: $primaryGenreId');
+    } else {
+      appLogger.info('IGDB indie query: no genre filter');
     }
 
     final body = '''
 where $whereClause;
 fields id,name,summary,cover.url,screenshots.url,platforms.name,genres.name,aggregated_rating,aggregated_rating_count,rating,rating_count,first_release_date;
-sort aggregated_rating desc;
+sort first_release_date desc;
 limit 30;
 ''';
 
-    appLogger.info('IGDB: fetching indie games');
+    appLogger.info('IGDB: fetching indie games with query:\n$body');
 
     final request = http.Request('POST', uri)
       ..headers.addAll(<String, String>{

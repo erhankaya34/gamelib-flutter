@@ -6,8 +6,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../../core/fire_theme.dart';
 import '../../core/ui_constants.dart';
 import '../library/library_controller.dart';
+import '../steam_library/steam_library_provider.dart';
 import 'game_detail_screen.dart';
 import 'search_controller.dart';
 
@@ -18,23 +20,45 @@ class SearchScreen extends ConsumerStatefulWidget {
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends ConsumerState<SearchScreen> {
+class _SearchScreenState extends ConsumerState<SearchScreen>
+    with TickerProviderStateMixin {
   final _queryController = TextEditingController();
   final _focusNode = FocusNode();
   Timer? _debounce;
   static const _minChars = 4;
   static const _debounceDuration = Duration(milliseconds: 350);
 
+  late AnimationController _flameController;
+  late AnimationController _emberController;
+
+  @override
+  void initState() {
+    super.initState();
+    _flameController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat();
+
+    _emberController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4000),
+    )..repeat();
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
     _queryController.dispose();
     _focusNode.dispose();
+    _flameController.dispose();
+    _emberController.dispose();
     super.dispose();
   }
 
   Future<void> _runSearch() async {
-    await ref.read(searchControllerProvider.notifier).search(_queryController.text);
+    await ref
+        .read(searchControllerProvider.notifier)
+        .search(_queryController.text);
   }
 
   void _onQueryChanged(String value) {
@@ -52,167 +76,253 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Scaffold(
       backgroundColor: UIConstants.bgPrimary,
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // Header
-            SliverToBoxAdapter(
-              child: _SearchHeader(),
-            ),
-
-            // Search bar
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: _SearchBar(
-                  controller: _queryController,
-                  focusNode: _focusNode,
-                  onChanged: _onQueryChanged,
-                  onSubmitted: (_) => _runSearch(),
-                ),
-              ),
-            ),
-
-            // Loading indicator
-            if (searchState.isLoading)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: const LinearProgressIndicator(
-                      backgroundColor: UIConstants.bgSecondary,
-                      valueColor: AlwaysStoppedAnimation(UIConstants.accentPurple),
-                      minHeight: 3,
-                    ),
-                  ),
-                ),
-              ),
-
-            // Error message
-            if (searchState.hasError)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: UIConstants.accentRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
-                      border: Border.all(
-                        color: UIConstants.accentRed.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          color: UIConstants.accentRed,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            searchState.error.toString(),
-                            style: const TextStyle(color: UIConstants.accentRed),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            // Results
-            searchState.when(
-              data: (results) {
-                if (results.isEmpty && _queryController.text.trim().length >= _minChars) {
-                  return SliverFillRemaining(
-                    child: _NoResultsState(),
-                  );
-                }
-
-                if (results.isEmpty) {
-                  final trendingAsync = ref.watch(trendingGamesProvider);
-                  return trendingAsync.when(
-                    data: (trendingGames) {
-                      if (trendingGames.isEmpty) {
-                        return SliverFillRemaining(
-                          child: _EmptySearchState(),
-                        );
-                      }
-                      return _TrendingGamesSection(games: trendingGames);
-                    },
-                    loading: () => SliverFillRemaining(
-                      child: const Center(
-                        child: CircularProgressIndicator(color: UIConstants.accentPurple),
-                      ),
-                    ),
-                    error: (error, _) => SliverFillRemaining(
-                      child: _ErrorState(message: error.toString()),
-                    ),
-                  );
-                }
-
-                final library = ref.watch(libraryControllerProvider).valueOrNull ?? [];
-                return SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final game = results[index];
-                        final inLibrary = library.any((log) => log.game.id == game.id);
-                        return _GameCard(
-                          game: game,
-                          inLibrary: inLibrary,
-                          index: index,
-                        );
-                      },
-                      childCount: results.length,
-                    ),
+      body: Stack(
+        children: [
+          // Fire Background
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _flameController,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter: FireBackgroundPainter(
+                    progress: _flameController.value,
+                    intensity: 0.5,
                   ),
                 );
               },
-              loading: () => SliverPadding(
-                padding: const EdgeInsets.all(20),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => const _ShimmerGameCard(),
-                    childCount: 5,
+            ),
+          ),
+
+          // Ember Particles
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _emberController,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter: EmberParticlesPainter(
+                    progress: _emberController.value,
+                    particleCount: 8,
+                    intensity: 0.4,
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // Gradient Overlay
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      UIConstants.bgPrimary.withOpacity(0.7),
+                      UIConstants.bgPrimary.withOpacity(0.95),
+                    ],
+                    stops: const [0.0, 0.3, 0.6],
                   ),
                 ),
               ),
-              error: (error, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
             ),
-          ],
-        ),
+          ),
+
+          // Content
+          SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                // Header
+                SliverToBoxAdapter(
+                  child: _FireSearchHeader(flameController: _flameController),
+                ),
+
+                // Search bar
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: _FireSearchBar(
+                      controller: _queryController,
+                      focusNode: _focusNode,
+                      onChanged: _onQueryChanged,
+                      onSubmitted: (_) => _runSearch(),
+                    ),
+                  ),
+                ),
+
+                // Loading indicator
+                if (searchState.isLoading)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          backgroundColor: UIConstants.bgSecondary,
+                          valueColor: AlwaysStoppedAnimation(UIConstants.fireOrange),
+                          minHeight: 3,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Error message
+                if (searchState.hasError)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              UIConstants.fireRed.withOpacity(0.15),
+                              UIConstants.fireOrange.withOpacity(0.08),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+                          border: Border.all(
+                            color: UIConstants.fireRed.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              color: UIConstants.fireRed,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                searchState.error.toString(),
+                                style: TextStyle(color: UIConstants.fireRed),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Results
+                searchState.when(
+                  data: (results) {
+                    if (results.isEmpty &&
+                        _queryController.text.trim().length >= _minChars) {
+                      return SliverFillRemaining(child: _FireNoResultsState());
+                    }
+
+                    if (results.isEmpty) {
+                      final trendingAsync = ref.watch(trendingGamesProvider);
+                      return trendingAsync.when(
+                        data: (trendingGames) {
+                          if (trendingGames.isEmpty) {
+                            return SliverFillRemaining(child: _FireEmptySearchState());
+                          }
+                          return _FireTrendingGamesSection(games: trendingGames);
+                        },
+                        loading: () => const SliverFillRemaining(
+                          child: Center(child: FireLoadingIndicator()),
+                        ),
+                        error: (error, _) => SliverFillRemaining(
+                          child: _FireErrorState(message: error.toString()),
+                        ),
+                      );
+                    }
+
+                    return SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final game = results[index];
+                          final inLibraryById = ref.watch(isGameInAnyLibraryProvider(game.id));
+                          final inLibraryByName = ref.watch(isGameInAnyLibraryByNameProvider(game.name));
+                          final inLibrary = inLibraryById || inLibraryByName;
+                          return _FireGameCard(
+                            game: game,
+                            inLibrary: inLibrary,
+                            index: index,
+                          );
+                        }, childCount: results.length),
+                      ),
+                    );
+                  },
+                  loading: () => SliverPadding(
+                    padding: const EdgeInsets.all(20),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => const _FireShimmerGameCard(),
+                        childCount: 5,
+                      ),
+                    ),
+                  ),
+                  error: (error, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SearchHeader extends StatelessWidget {
+class _FireSearchHeader extends StatelessWidget {
+  const _FireSearchHeader({required this.flameController});
+
+  final AnimationController flameController;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       child: Row(
         children: [
-          Container(
-            width: 4,
-            height: 28,
-            decoration: BoxDecoration(
-              color: UIConstants.accentPurple,
-              borderRadius: BorderRadius.circular(2),
-            ),
+          AnimatedBuilder(
+            animation: flameController,
+            builder: (context, child) {
+              return Container(
+                width: 4,
+                height: 28,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      UIConstants.fireYellow,
+                      Color.lerp(
+                        UIConstants.fireOrange,
+                        UIConstants.fireRed,
+                        flameController.value,
+                      )!,
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: UIConstants.fireOrange.withOpacity(0.5 + flameController.value * 0.3),
+                      blurRadius: 8 + flameController.value * 4,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
           const SizedBox(width: 12),
-          const Text(
-            'OYUN ARA',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2,
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+            ).createShader(bounds),
+            child: const Text(
+              'OYUN ARA',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2,
+              ),
             ),
           ),
         ],
@@ -221,8 +331,8 @@ class _SearchHeader extends StatelessWidget {
   }
 }
 
-class _SearchBar extends StatelessWidget {
-  const _SearchBar({
+class _FireSearchBar extends StatelessWidget {
+  const _FireSearchBar({
     required this.controller,
     required this.focusNode,
     required this.onChanged,
@@ -238,11 +348,29 @@ class _SearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: UIConstants.bgSecondary,
-        borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
-        border: Border.all(
-          color: UIConstants.accentPurple.withOpacity(0.2),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            UIConstants.fireOrange.withOpacity(0.18),
+            UIConstants.fireRed.withOpacity(0.12),
+            UIConstants.fireDarkBg.withOpacity(0.6),
+          ],
         ),
+        borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+        border: Border.all(color: UIConstants.fireOrange.withOpacity(0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: UIConstants.fireOrange.withOpacity(0.15),
+            blurRadius: 24,
+            spreadRadius: -4,
+          ),
+          BoxShadow(
+            color: UIConstants.fireRed.withOpacity(0.08),
+            blurRadius: 40,
+            spreadRadius: -8,
+          ),
+        ],
       ),
       child: TextField(
         controller: controller,
@@ -250,26 +378,29 @@ class _SearchBar extends StatelessWidget {
         textInputAction: TextInputAction.search,
         onSubmitted: onSubmitted,
         onChanged: onChanged,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+        cursorColor: UIConstants.fireOrange,
         decoration: InputDecoration(
           hintText: 'Oyun ara (min. 4 karakter)',
           hintStyle: TextStyle(
-            color: Colors.white.withOpacity(0.3),
+            color: UIConstants.fireYellow.withOpacity(0.4),
             fontSize: 15,
           ),
-          prefixIcon: const Icon(
-            Icons.search_rounded,
-            color: UIConstants.accentPurple,
-            size: 22,
+          prefixIcon: ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+            ).createShader(bounds),
+            child: const Icon(
+              Icons.search_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
           suffixIcon: controller.text.isNotEmpty
               ? IconButton(
                   icon: Icon(
                     Icons.clear_rounded,
-                    color: Colors.white.withOpacity(0.5),
+                    color: UIConstants.fireOrange.withOpacity(0.6),
                     size: 20,
                   ),
                   onPressed: () {
@@ -279,51 +410,56 @@ class _SearchBar extends StatelessWidget {
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
       ),
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 }
 
-class _TrendingGamesSection extends ConsumerWidget {
-  const _TrendingGamesSection({required this.games});
+class _FireTrendingGamesSection extends ConsumerWidget {
+  const _FireTrendingGamesSection({required this.games});
 
   final List<dynamic> games;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final library = ref.watch(libraryControllerProvider).valueOrNull ?? [];
-
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index == 0) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: UIConstants.purpleGradient,
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: UIConstants.fireOrange.withOpacity(0.4),
+                          blurRadius: 12,
+                          spreadRadius: -2,
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.trending_up_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    const Text(
+                    child: const Icon(
+                      Icons.local_fire_department_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ShaderMask(
+                    shaderCallback: (bounds) => LinearGradient(
+                      colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+                    ).createShader(bounds),
+                    child: const Text(
                       'Trend Oyunlar',
                       style: TextStyle(
                         color: Colors.white,
@@ -331,34 +467,31 @@ class _TrendingGamesSection extends ConsumerWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const Spacer(),
-                    Icon(
-                      Icons.auto_awesome_rounded,
-                      color: UIConstants.accentPurple.withOpacity(0.6),
-                      size: 18,
-                    ),
-                  ],
-                ),
-              ).animate().fadeIn(delay: 100.ms, duration: 400.ms);
-            }
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.auto_awesome_rounded,
+                    color: UIConstants.fireOrange.withOpacity(0.6),
+                    size: 18,
+                  ),
+                ],
+              ),
+            ).animate().fadeIn(delay: 100.ms, duration: 400.ms);
+          }
 
-            final game = games[index - 1];
-            final inLibrary = library.any((log) => log.game.id == game.id);
-            return _GameCard(
-              game: game,
-              inLibrary: inLibrary,
-              index: index - 1,
-            );
-          },
-          childCount: games.length + 1,
-        ),
+          final game = games[index - 1];
+          final inLibraryById = ref.watch(isGameInAnyLibraryProvider(game.id));
+          final inLibraryByName = ref.watch(isGameInAnyLibraryByNameProvider(game.name));
+          final inLibrary = inLibraryById || inLibraryByName;
+          return _FireGameCard(game: game, inLibrary: inLibrary, index: index - 1);
+        }, childCount: games.length + 1),
       ),
     );
   }
 }
 
-class _GameCard extends StatelessWidget {
-  const _GameCard({
+class _FireGameCard extends StatelessWidget {
+  const _FireGameCard({
     required this.game,
     required this.inLibrary,
     required this.index,
@@ -381,19 +514,39 @@ class _GameCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: UIConstants.bgSecondary,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: inLibrary
+                ? [
+                    UIConstants.fireYellow.withOpacity(0.12),
+                    UIConstants.fireYellow.withOpacity(0.06),
+                  ]
+                : [
+                    UIConstants.fireOrange.withOpacity(0.1),
+                    UIConstants.fireRed.withOpacity(0.05),
+                  ],
+          ),
           borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
           border: Border.all(
             color: inLibrary
-                ? UIConstants.accentGreen.withOpacity(0.3)
-                : Colors.white.withOpacity(0.05),
+                ? UIConstants.fireYellow.withOpacity(0.3)
+                : UIConstants.fireOrange.withOpacity(0.2),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: (inLibrary ? UIConstants.fireYellow : UIConstants.fireOrange)
+                  .withOpacity(0.1),
+              blurRadius: 15,
+              spreadRadius: -5,
+            ),
+          ],
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Cover image
+              // Cover image with fire glow
               Hero(
                 tag: 'game-cover-${game.id}',
                 child: Container(
@@ -403,7 +556,7 @@ class _GameCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: UIConstants.accentPurple.withOpacity(0.2),
+                        color: UIConstants.fireOrange.withOpacity(0.3),
                         blurRadius: 12,
                       ),
                     ],
@@ -417,15 +570,12 @@ class _GameCard extends StatelessWidget {
                             placeholder: (context, url) => Container(
                               color: UIConstants.bgTertiary,
                               child: const Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: UIConstants.accentPurple,
-                                ),
+                                child: FireLoadingIndicator(size: 20, strokeWidth: 2),
                               ),
                             ),
-                            errorWidget: (context, url, error) => _GamePlaceholder(),
+                            errorWidget: (context, url, error) => _FireGamePlaceholder(),
                           )
-                        : _GamePlaceholder(),
+                        : _FireGamePlaceholder(),
                   ),
                 ),
               ),
@@ -463,20 +613,25 @@ class _GameCard extends StatelessWidget {
                         runSpacing: 4,
                         children: game.genres.take(2).map<Widget>((genre) {
                           return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: UIConstants.accentPurple.withOpacity(0.15),
+                              gradient: LinearGradient(
+                                colors: [
+                                  UIConstants.fireOrange.withOpacity(0.2),
+                                  UIConstants.fireYellow.withOpacity(0.1),
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: UIConstants.fireOrange.withOpacity(0.3),
+                              ),
                             ),
                             child: Text(
                               genre,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: UIConstants.accentPurple,
+                                color: UIConstants.fireOrange,
                               ),
                             ),
                           );
@@ -487,18 +642,38 @@ class _GameCard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(
-                            Icons.check_circle_rounded,
-                            size: 14,
-                            color: UIConstants.accentGreen,
-                          ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'Koleksiyonda',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: UIConstants.accentGreen,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  UIConstants.fireYellow.withOpacity(0.2),
+                                  UIConstants.fireYellow.withOpacity(0.1),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: UIConstants.fireYellow.withOpacity(0.4),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 12,
+                                  color: UIConstants.fireYellow,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Kütüphanede',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: UIConstants.fireYellow,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -508,32 +683,46 @@ class _GameCard extends StatelessWidget {
                 ),
               ),
 
-              // Arrow
-              Icon(
-                Icons.chevron_right_rounded,
-                color: Colors.white.withOpacity(0.3),
-                size: 24,
+              // Arrow with fire style
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      UIConstants.fireOrange.withOpacity(0.15),
+                      UIConstants.fireRed.withOpacity(0.08),
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: UIConstants.fireOrange.withOpacity(0.7),
+                  size: 20,
+                ),
               ),
             ],
           ),
         ),
       ),
-    ).animate().fadeIn(
-      delay: Duration(milliseconds: 50 * index),
-      duration: 400.ms,
-    ).slideX(begin: 0.1, end: 0);
+    )
+        .animate()
+        .fadeIn(delay: Duration(milliseconds: 50 * index), duration: 400.ms)
+        .slideX(begin: 0.1, end: 0);
   }
 }
 
-class _GamePlaceholder extends StatelessWidget {
+class _FireGamePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: UIConstants.bgTertiary,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: UIConstants.fireGradient),
+      ),
       child: const Center(
         child: Icon(
           Icons.sports_esports_rounded,
-          color: UIConstants.accentPurple,
+          color: Colors.white,
           size: 28,
         ),
       ),
@@ -541,7 +730,7 @@ class _GamePlaceholder extends StatelessWidget {
   }
 }
 
-class _EmptySearchState extends StatelessWidget {
+class _FireEmptySearchState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -551,22 +740,39 @@ class _EmptySearchState extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: UIConstants.accentPurple.withOpacity(0.1),
+              gradient: LinearGradient(
+                colors: [
+                  UIConstants.fireOrange.withOpacity(0.2),
+                  UIConstants.fireRed.withOpacity(0.1),
+                ],
+              ),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: UIConstants.fireOrange.withOpacity(0.3),
+                  blurRadius: 30,
+                  spreadRadius: -5,
+                ),
+              ],
             ),
             child: Icon(
               Icons.sports_esports_rounded,
               size: 56,
-              color: UIConstants.accentPurple.withOpacity(0.6),
+              color: UIConstants.fireOrange,
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Oyun Ara',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+            ).createShader(bounds),
+            child: const Text(
+              'Oyun Ara',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -583,7 +789,7 @@ class _EmptySearchState extends StatelessWidget {
   }
 }
 
-class _NoResultsState extends StatelessWidget {
+class _FireNoResultsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -593,22 +799,39 @@ class _NoResultsState extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: UIConstants.accentYellow.withOpacity(0.1),
+              gradient: LinearGradient(
+                colors: [
+                  UIConstants.fireYellow.withOpacity(0.2),
+                  UIConstants.fireOrange.withOpacity(0.1),
+                ],
+              ),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: UIConstants.fireYellow.withOpacity(0.3),
+                  blurRadius: 30,
+                  spreadRadius: -5,
+                ),
+              ],
             ),
             child: Icon(
               Icons.search_off_rounded,
               size: 56,
-              color: UIConstants.accentYellow.withOpacity(0.6),
+              color: UIConstants.fireYellow,
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Sonuç Bulunamadı',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+            ).createShader(bounds),
+            child: const Text(
+              'Sonuç Bulunamadı',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -625,8 +848,8 @@ class _NoResultsState extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message});
+class _FireErrorState extends StatelessWidget {
+  const _FireErrorState({required this.message});
 
   final String message;
 
@@ -639,13 +862,25 @@ class _ErrorState extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: UIConstants.accentRed.withOpacity(0.1),
+              gradient: LinearGradient(
+                colors: [
+                  UIConstants.fireRed.withOpacity(0.2),
+                  UIConstants.fireOrange.withOpacity(0.1),
+                ],
+              ),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: UIConstants.fireRed.withOpacity(0.3),
+                  blurRadius: 30,
+                  spreadRadius: -5,
+                ),
+              ],
             ),
-            child: const Icon(
+            child: Icon(
               Icons.error_outline_rounded,
               size: 56,
-              color: UIConstants.accentRed,
+              color: UIConstants.fireRed,
             ),
           ),
           const SizedBox(height: 24),
@@ -672,8 +907,8 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-class _ShimmerGameCard extends StatelessWidget {
-  const _ShimmerGameCard();
+class _FireShimmerGameCard extends StatelessWidget {
+  const _FireShimmerGameCard();
 
   @override
   Widget build(BuildContext context) {
@@ -681,12 +916,18 @@ class _ShimmerGameCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: UIConstants.bgSecondary,
+        gradient: LinearGradient(
+          colors: [
+            UIConstants.fireOrange.withOpacity(0.08),
+            UIConstants.fireRed.withOpacity(0.04),
+          ],
+        ),
         borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+        border: Border.all(color: UIConstants.fireOrange.withOpacity(0.15)),
       ),
       child: Shimmer.fromColors(
-        baseColor: UIConstants.bgTertiary,
-        highlightColor: UIConstants.bgSecondary,
+        baseColor: UIConstants.fireOrange.withOpacity(0.1),
+        highlightColor: UIConstants.fireYellow.withOpacity(0.05),
         child: Row(
           children: [
             Container(

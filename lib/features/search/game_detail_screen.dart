@@ -8,7 +8,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/ui_constants.dart';
-import '../../core/utils.dart';
 import '../../data/igdb_client.dart';
 import '../../models/game.dart';
 import '../../models/game_log.dart';
@@ -23,6 +22,7 @@ final gameDetailProvider = FutureProvider.family<Game?, int>((ref, id) async {
 });
 
 /// Provider to check if a game is in ANY library (manual OR Steam)
+/// Now also includes name-based matching for better accuracy
 final isGameInAnyLibraryProvider =
     Provider.family<bool, int>((ref, gameId) {
   // Check manual library
@@ -32,6 +32,26 @@ final isGameInAnyLibraryProvider =
   // Check Steam library
   final steamGames = ref.watch(steamLibraryProvider).valueOrNull ?? [];
   final isInSteam = steamGames.any((log) => log.game.id == gameId);
+
+  return isInManual || isInSteam;
+});
+
+/// Provider to check if a game is in ANY library by name (for search results)
+final isGameInAnyLibraryByNameProvider =
+    Provider.family<bool, String>((ref, gameName) {
+  final normalizedName = gameName.toLowerCase().trim();
+
+  // Check manual library
+  final manualGames = ref.watch(libraryControllerProvider).valueOrNull ?? [];
+  final isInManual = manualGames.any(
+    (log) => log.game.name.toLowerCase().trim() == normalizedName,
+  );
+
+  // Check Steam library
+  final steamGames = ref.watch(steamLibraryProvider).valueOrNull ?? [];
+  final isInSteam = steamGames.any(
+    (log) => log.game.name.toLowerCase().trim() == normalizedName,
+  );
 
   return isInManual || isInSteam;
 });
@@ -113,6 +133,9 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
 
     final isInAnyLibrary = ref.watch(isGameInAnyLibraryProvider(widget.game.id));
 
+    // Check if game can be rated (must be in library with 2+ hours)
+    final ratingCheck = ref.watch(canRateGameProvider(widget.game.id));
+
     final double parallaxOffset = (_scrollOffset * 0.5).clamp(0.0, 100.0);
     final double opacity = (1.0 - (_scrollOffset / 200)).clamp(0.0, 1.0);
 
@@ -137,9 +160,15 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                       color: UIConstants.bgSecondary.withOpacity(0.9),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: UIConstants.accentPurple.withOpacity(0.3),
+                        color: UIConstants.fireOrange.withOpacity(0.3),
                         width: 1,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: UIConstants.fireOrange.withOpacity(0.1),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -209,10 +238,16 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                                 width: 40,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: UIConstants.purpleGradient,
+                                  gradient: LinearGradient(
+                                    colors: UIConstants.fireGradient,
                                   ),
                                   borderRadius: BorderRadius.circular(2),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: UIConstants.fireOrange.withOpacity(0.5),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -239,10 +274,15 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                                         vertical: 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: UIConstants.accentPurple.withOpacity(0.2),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            UIConstants.fireOrange.withOpacity(0.2),
+                                            UIConstants.fireRed.withOpacity(0.15),
+                                          ],
+                                        ),
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                          color: UIConstants.accentPurple.withOpacity(0.4),
+                                          color: UIConstants.fireOrange.withOpacity(0.4),
                                           width: 1,
                                         ),
                                       ),
@@ -252,14 +292,14 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                                           Icon(
                                             Icons.calendar_today_rounded,
                                             size: 12,
-                                            color: UIConstants.accentPurple,
+                                            color: UIConstants.fireOrange,
                                           ),
                                           const SizedBox(width: 6),
                                           Text(
                                             _formatDate(detail.releaseDate!),
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: UIConstants.accentPurple,
+                                              color: UIConstants.fireOrange,
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
@@ -391,7 +431,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                     color: UIConstants.bgSecondary.withOpacity(0.9),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.white.withOpacity(0.05),
+                        color: UIConstants.fireOrange.withOpacity(0.1),
                         width: 1,
                       ),
                     ),
@@ -399,19 +439,19 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                   child: SafeArea(
                     top: false,
                     child: GestureDetector(
-                      onTap: () => _showAddDialog(context, ref, detail, existingLog),
+                      onTap: () => _showAddDialog(context, ref, detail, existingLog, ratingCheck.canRate),
                       child: Container(
                         height: 56,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: isInLibrary
-                                ? UIConstants.violetGradient
-                                : UIConstants.purpleGradient,
+                                ? [UIConstants.fireOrange, UIConstants.fireRed]
+                                : (isInAnyLibrary ? UIConstants.fireGradient : [UIConstants.fireYellow, UIConstants.fireOrange]),
                           ),
                           borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
                           boxShadow: [
                             BoxShadow(
-                              color: UIConstants.accentPurple.withOpacity(0.4),
+                              color: UIConstants.fireOrange.withOpacity(0.4),
                               blurRadius: 20,
                               offset: const Offset(0, 4),
                             ),
@@ -421,13 +461,17 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              isInLibrary ? Icons.edit_rounded : Icons.add_rounded,
+                              isInLibrary
+                                  ? Icons.edit_rounded
+                                  : (isInAnyLibrary ? Icons.add_rounded : Icons.favorite_rounded),
                               color: Colors.white,
                               size: 22,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              isInLibrary ? 'Düzenle' : 'Koleksiyona Ekle',
+                              isInLibrary
+                                  ? 'Düzenle'
+                                  : (isInAnyLibrary ? 'Koleksiyona Ekle' : 'İstek Listesine Ekle'),
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
@@ -448,8 +492,9 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
     );
   }
 
-  Future<void> _showAddDialog(BuildContext context, WidgetRef ref, Game game, GameLog? existingLog) async {
+  Future<void> _showAddDialog(BuildContext context, WidgetRef ref, Game game, GameLog? existingLog, bool canRate) async {
     final isEditing = existingLog != null;
+    final isInAnyLibrary = ref.read(isGameInAnyLibraryProvider(game.id));
     final ratingController = TextEditingController(
       text: existingLog?.rating?.toString() ?? '8',
     );
@@ -462,7 +507,10 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        PlayStatus selectedStatus = existingLog?.status ?? PlayStatus.completed;
+        // If game is not in any library, default to wishlist and only allow wishlist
+        PlayStatus selectedStatus = isInAnyLibrary
+            ? (existingLog?.status ?? PlayStatus.completed)
+            : PlayStatus.wishlist;
 
         return StatefulBuilder(
           builder: (context, setState) {
@@ -498,10 +546,17 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: UIConstants.purpleGradient,
+                                gradient: LinearGradient(
+                                  colors: UIConstants.fireGradient,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: UIConstants.fireOrange.withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
                               child: Icon(
                                 isEditing ? Icons.edit_rounded : Icons.add_rounded,
@@ -522,6 +577,71 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                         ),
                         const SizedBox(height: 24),
 
+                        // Info banner for games not in library
+                        if (!isInAnyLibrary) ...[
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  UIConstants.fireOrange.withOpacity(0.1),
+                                  UIConstants.fireRed.withOpacity(0.05),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: UIConstants.fireOrange.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        UIConstants.fireOrange.withOpacity(0.2),
+                                        UIConstants.fireRed.withOpacity(0.15),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.info_outline_rounded,
+                                    color: UIConstants.fireOrange,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Bu oyun kütüphanenizde yok',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Değerlendirme yapabilmek için oyuna sahip olmalı ve en az 2 saat oynamış olmalısınız.',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.6),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
                         // Status Selection
                         Text(
                           'DURUM',
@@ -533,44 +653,56 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _StatusChip(
-                              icon: Icons.favorite_rounded,
-                              label: 'İstek Listesi',
-                              selected: selectedStatus == PlayStatus.wishlist,
-                              onTap: () => setState(() => selectedStatus = PlayStatus.wishlist),
-                              color: UIConstants.accentYellow,
-                            ),
-                            _StatusChip(
-                              icon: Icons.play_circle_rounded,
-                              label: 'Oynuyor',
-                              selected: selectedStatus == PlayStatus.playing,
-                              onTap: () => setState(() => selectedStatus = PlayStatus.playing),
-                              color: UIConstants.accentPurple,
-                            ),
-                            _StatusChip(
-                              icon: Icons.check_circle_rounded,
-                              label: 'Tamamlandı',
-                              selected: selectedStatus == PlayStatus.completed,
-                              onTap: () => setState(() => selectedStatus = PlayStatus.completed),
-                              color: UIConstants.accentGreen,
-                            ),
-                            _StatusChip(
-                              icon: Icons.cancel_rounded,
-                              label: 'Bırakıldı',
-                              selected: selectedStatus == PlayStatus.dropped,
-                              onTap: () => setState(() => selectedStatus = PlayStatus.dropped),
-                              color: UIConstants.accentRed,
-                            ),
-                          ],
-                        ),
+
+                        // Show only wishlist if game is not in library
+                        if (!isInAnyLibrary) ...[
+                          _StatusChip(
+                            icon: Icons.favorite_rounded,
+                            label: 'İstek Listesine Ekle',
+                            selected: true,
+                            onTap: () {},
+                            color: UIConstants.accentYellow,
+                          ),
+                        ] else ...[
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _StatusChip(
+                                icon: Icons.favorite_rounded,
+                                label: 'İstek Listesi',
+                                selected: selectedStatus == PlayStatus.wishlist,
+                                onTap: () => setState(() => selectedStatus = PlayStatus.wishlist),
+                                color: UIConstants.accentYellow,
+                              ),
+                              _StatusChip(
+                                icon: Icons.play_circle_rounded,
+                                label: 'Oynuyor',
+                                selected: selectedStatus == PlayStatus.playing,
+                                onTap: () => setState(() => selectedStatus = PlayStatus.playing),
+                                color: UIConstants.fireOrange,
+                              ),
+                              _StatusChip(
+                                icon: Icons.check_circle_rounded,
+                                label: 'Tamamlandı',
+                                selected: selectedStatus == PlayStatus.completed,
+                                onTap: () => setState(() => selectedStatus = PlayStatus.completed),
+                                color: UIConstants.accentGreen,
+                              ),
+                              _StatusChip(
+                                icon: Icons.cancel_rounded,
+                                label: 'Bırakıldı',
+                                selected: selectedStatus == PlayStatus.dropped,
+                                onTap: () => setState(() => selectedStatus = PlayStatus.dropped),
+                                color: UIConstants.accentRed,
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 24),
 
-                        // Rating (only if not wishlist)
-                        if (showRating) ...[
+                        // Rating (only if not wishlist AND can rate - 2+ hours in library)
+                        if (showRating && canRate) ...[
                           _buildTextField(
                             controller: ratingController,
                             label: 'Puan (1-10)',
@@ -580,115 +712,66 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                             keyboardType: TextInputType.number,
                           ),
                           const SizedBox(height: 16),
+                        ] else if (showRating && !canRate) ...[
+                          // Show info that rating requires 2+ hours
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  UIConstants.fireYellow.withOpacity(0.1),
+                                  UIConstants.fireOrange.withOpacity(0.05),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: UIConstants.fireYellow.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  color: UIConstants.fireYellow,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Değerlendirme yapabilmek için bu oyunu en az 2 saat oynamış olmalısınız',
+                                    style: TextStyle(
+                                      color: UIConstants.fireYellow,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                         ],
 
-                        // Notes
-                        _buildTextField(
-                          controller: noteController,
-                          label: 'Yorum / Not (opsiyonel)',
-                          hint: 'Düşüncelerini yaz...',
-                          icon: Icons.note_rounded,
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 24),
+                        // Notes (only show if game is in library)
+                        if (isInAnyLibrary) ...[
+                          _buildTextField(
+                            controller: noteController,
+                            label: 'Yorum / Not (opsiyonel)',
+                            hint: 'Düşüncelerini yaz...',
+                            icon: Icons.note_rounded,
+                            maxLines: 3,
+                          ),
+                          const SizedBox(height: 24),
+                        ],
 
                         // Action Buttons
                         Row(
                           children: [
-                            // Delete Button (only when editing)
-                            if (isEditing) ...[
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () async {
-                                    final confirmed = await showDialog<bool>(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        backgroundColor: UIConstants.bgSecondary,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        title: const Text(
-                                          'Oyunu Sil',
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                        content: Text(
-                                          'Bu oyunu kütüphanenden silmek istediğinden emin misin?',
-                                          style: TextStyle(color: Colors.white.withOpacity(0.7)),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context, false),
-                                            child: Text(
-                                              'İptal',
-                                              style: TextStyle(color: Colors.white.withOpacity(0.5)),
-                                            ),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () => Navigator.pop(context, true),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: UIConstants.accentRed,
-                                            ),
-                                            child: const Text('Sil'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-
-                                    if (confirmed == true && existingLog != null) {
-                                      ref.read(libraryControllerProvider.notifier).deleteLog(existingLog.id);
-                                      Navigator.of(context).pop();
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: const Text('Oyun kütüphaneden silindi'),
-                                          backgroundColor: UIConstants.accentRed,
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  child: Container(
-                                    height: 56,
-                                    decoration: BoxDecoration(
-                                      color: UIConstants.accentRed.withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
-                                      border: Border.all(
-                                        color: UIConstants.accentRed.withOpacity(0.4),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.delete_rounded,
-                                          color: UIConstants.accentRed,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Sil',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            color: UIConstants.accentRed,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
-                            // Save Button
+                            // Save Button (no delete - games cannot be removed from library)
                             Expanded(
-                              flex: isEditing ? 2 : 1,
                               child: GestureDetector(
                                 onTap: () async {
-                                  final rating = showRating ? int.tryParse(ratingController.text) : null;
+                                  // Rating is only allowed if canRate is true (2+ hours in library)
+                                  final rating = (showRating && canRate) ? int.tryParse(ratingController.text) : null;
                                   final clampedRating = rating == null ? null : rating.clamp(1, 10);
 
                                   try {
@@ -762,13 +845,13 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
                                 child: Container(
                                   height: 56,
                                   decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: UIConstants.purpleGradient,
+                                    gradient: LinearGradient(
+                                      colors: UIConstants.fireGradient,
                                     ),
                                     borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: UIConstants.accentPurple.withOpacity(0.4),
+                                        color: UIConstants.fireOrange.withOpacity(0.4),
                                         blurRadius: 16,
                                         offset: const Offset(0, 4),
                                       ),
@@ -815,7 +898,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
         color: UIConstants.bgTertiary,
         borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
         border: Border.all(
-          color: Colors.white.withOpacity(0.05),
+          color: UIConstants.fireOrange.withOpacity(0.1),
           width: 1,
         ),
       ),
@@ -829,7 +912,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
           hintText: hint,
           labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-          prefixIcon: Icon(icon, color: iconColor ?? UIConstants.accentPurple),
+          prefixIcon: Icon(icon, color: iconColor ?? UIConstants.fireOrange),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
         ),
@@ -847,6 +930,8 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
         return 'Koleksiyona eklendi';
       case PlayStatus.dropped:
         return 'Bırakıldı olarak işaretlendi';
+      case PlayStatus.backlog:
+        return 'Backlog\'a eklendi';
     }
   }
 }
@@ -858,22 +943,35 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen> {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
-    this.accentColor = UIConstants.accentPurple,
+    this.accentColor,
   });
 
   final String title;
-  final Color accentColor;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
+    final color = accentColor ?? UIConstants.fireOrange;
     return Row(
       children: [
         Container(
           width: 4,
           height: 20,
           decoration: BoxDecoration(
-            color: accentColor,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: accentColor != null
+                  ? [accentColor!, accentColor!.withOpacity(0.7)]
+                  : [UIConstants.fireYellow, UIConstants.fireOrange],
+            ),
             borderRadius: BorderRadius.circular(2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.4),
+                blurRadius: 6,
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 12),
@@ -926,7 +1024,7 @@ class _RatingSection extends StatelessWidget {
                   label: 'IGDB',
                   score: game.userRating!,
                   icon: Icons.people_rounded,
-                  gradient: UIConstants.purpleGradient,
+                  gradient: UIConstants.fireGradient,
                   count: game.ratingCount,
                 ),
               ),
@@ -1056,7 +1154,7 @@ class _PlatformSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Platformlar', accentColor: UIConstants.accentSteam),
+        const _SectionHeader(title: 'Platformlar', accentColor: UIConstants.fireOrange),
         const SizedBox(height: 16),
         Wrap(
           spacing: 10,
@@ -1117,7 +1215,7 @@ class _GenreSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Türler', accentColor: UIConstants.accentViolet),
+        const _SectionHeader(title: 'Türler', accentColor: UIConstants.fireOrange),
         const SizedBox(height: 16),
         Wrap(
           spacing: 10,
@@ -1125,12 +1223,12 @@ class _GenreSection extends StatelessWidget {
           children: genres.asMap().entries.map((entry) {
             final index = entry.key;
             final genre = entry.value;
-            // Rotate through accent colors
+            // Rotate through fire accent colors
             final gradients = [
-              UIConstants.purpleGradient,
-              UIConstants.violetGradient,
+              UIConstants.fireGradient,
+              [UIConstants.fireOrange, UIConstants.fireRed],
+              [UIConstants.fireYellow, UIConstants.fireOrange],
               UIConstants.greenGradient,
-              UIConstants.yellowGradient,
             ];
             final gradient = gradients[index % gradients.length];
 
@@ -1143,6 +1241,12 @@ class _GenreSection extends StatelessWidget {
                   color: gradient[0].withOpacity(0.3),
                   width: 1,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient[0].withOpacity(0.1),
+                    blurRadius: 4,
+                  ),
+                ],
               ),
               child: Text(
                 genre,
@@ -1305,7 +1409,7 @@ class _ScreenshotSection extends StatelessWidget {
                             child: Center(
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: UIConstants.accentPurple,
+                                color: UIConstants.fireOrange,
                               ),
                             ),
                           ),

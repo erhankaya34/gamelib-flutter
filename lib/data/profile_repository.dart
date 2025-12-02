@@ -192,6 +192,89 @@ class ProfileRepository {
     }
   }
 
+  /// Link Riot Games account
+  Future<void> linkRiotAccount({
+    required String puuid,
+    required String gameName,
+    required String tagLine,
+    required String accessToken,
+    required String refreshToken,
+    String? region,
+    Map<String, dynamic>? riotData,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({
+            'riot_puuid': puuid,
+            'riot_game_name': gameName,
+            'riot_tag_line': tagLine,
+            'riot_access_token': accessToken,
+            'riot_refresh_token': refreshToken,
+            'riot_region': region,
+            'riot_data': riotData,
+            'riot_linked_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to link Riot account: $e');
+    }
+  }
+
+  /// Unlink Riot Games account
+  Future<void> unlinkRiotAccount() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({
+            'riot_puuid': null,
+            'riot_game_name': null,
+            'riot_tag_line': null,
+            'riot_access_token': null,
+            'riot_refresh_token': null,
+            'riot_region': null,
+            'riot_data': null,
+            'riot_linked_at': null,
+          })
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to unlink Riot account: $e');
+    }
+  }
+
+  /// Update Riot tokens (for token refresh)
+  Future<void> updateRiotTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await supabase
+          .from('profiles')
+          .update({
+            'riot_access_token': accessToken,
+            'riot_refresh_token': refreshToken,
+          })
+          .eq('id', userId);
+    } catch (e) {
+      throw Exception('Failed to update Riot tokens: $e');
+    }
+  }
+
   /// Update all profile customization at once
   Future<void> updateProfileCustomization({
     String? bio,
