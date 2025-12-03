@@ -2232,11 +2232,11 @@ class _FireLibraryGameCard extends ConsumerWidget {
 }
 
 // ============================================
-// FIRE VALORANT STATS PANEL
+// PREMIUM VALORANT STATS PANEL
 // ============================================
 
-/// Premium Valorant stats panel with fire theme
-/// Shows rank, stats, and player info from Henrik API
+/// Premium Valorant stats panel with fire theme design
+/// Features player card accent, fire gradients, and premium effects
 class _FireValorantStatsPanel extends ConsumerWidget {
   const _FireValorantStatsPanel();
 
@@ -2251,20 +2251,31 @@ class _FireValorantStatsPanel extends ConsumerWidget {
         if (profile == null) {
           return _buildNoDataState();
         }
-        return _buildStatsPanel(profile);
+        return _ValorantStatsCard(profile: profile);
       },
     );
   }
 
   Widget _buildLoadingState() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(24),
-      decoration: _panelDecoration(),
+      margin: const EdgeInsets.only(bottom: 20),
+      height: 200,
+      decoration: BoxDecoration(
+        color: UIConstants.fireDarkBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: UIConstants.fireOrange.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
       child: Center(
-        child: CircularProgressIndicator(
-          color: UIConstants.fireOrange,
-          strokeWidth: 2,
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            color: UIConstants.fireOrange,
+            strokeWidth: 2.5,
+          ),
         ),
       ),
     );
@@ -2272,16 +2283,28 @@ class _FireValorantStatsPanel extends ConsumerWidget {
 
   Widget _buildErrorState() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
-      decoration: _panelDecoration(),
+      decoration: BoxDecoration(
+        color: UIConstants.fireDarkBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: UIConstants.fireRed.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, color: UIConstants.fireRed, size: 20),
+          Icon(Icons.error_outline_rounded, color: UIConstants.fireRed, size: 20),
           const SizedBox(width: 12),
           Text(
             'Valorant verileri yüklenemedi',
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -2290,560 +2313,641 @@ class _FireValorantStatsPanel extends ConsumerWidget {
 
   Widget _buildNoDataState() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
-      decoration: _panelDecoration(),
+      decoration: BoxDecoration(
+        color: UIConstants.fireDarkBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: UIConstants.fireOrange.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           ValorantIcon(size: 20, color: UIConstants.fireOrange),
           const SizedBox(width: 12),
           Text(
             'Valorant istatistikleri bulunamadı',
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  BoxDecoration _panelDecoration() {
-    return BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          UIConstants.bgSecondary.withOpacity(0.95),
-          UIConstants.bgSecondary.withOpacity(0.85),
-        ],
-      ),
-      borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
-      border: Border.all(
-        color: UIConstants.fireOrange.withOpacity(0.25),
-        width: 1.5,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: UIConstants.fireOrange.withOpacity(0.08),
-          blurRadius: 20,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsPanel(ValorantProfile profile) {
-    final account = profile.account;
-    final mmr = profile.mmr;
-    final stats = profile.stats;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: _panelDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with Valorant branding
-          _buildHeader(account),
-
-          // Rank Card
-          if (mmr != null) _buildRankCard(mmr),
-
-          // Stats Grid
-          if (stats != null) _buildStatsGrid(stats),
-
-          // Most Played Info
-          if (stats?.mostPlayedAgent != null || stats?.mostPlayedMap != null)
-            _buildMostPlayedSection(stats!),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(ValorantAccount account) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            UIConstants.fireOrange.withOpacity(0.15),
-            UIConstants.fireRed.withOpacity(0.08),
-          ],
-        ),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(UIConstants.radiusLarge - 1),
-          topRight: Radius.circular(UIConstants.radiusLarge - 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Valorant Logo
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [UIConstants.fireOrange, UIConstants.fireRed],
-              ),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: UIConstants.fireOrange.withOpacity(0.4),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Center(
-              child: ValorantIcon(size: 22, color: Colors.white),
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // Player Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    ShaderMask(
-                      shaderCallback: (bounds) => LinearGradient(
-                        colors: [UIConstants.fireYellow, UIConstants.fireOrange],
-                      ).createShader(bounds),
-                      child: Text(
-                        account.riotId,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.arrow_upward_rounded,
-                      size: 12,
-                      color: UIConstants.fireYellow.withOpacity(0.7),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Seviye ${account.accountLevel ?? 0}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.6),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Player Card Image
-          if (account.cardUrl != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                account.cardUrl!,
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRankCard(ValorantMMR mmr) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            UIConstants.bgTertiary.withOpacity(0.8),
-            UIConstants.bgTertiary.withOpacity(0.5),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: UIConstants.fireYellow.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          // Rank Icon
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                colors: [
-                  UIConstants.fireYellow.withOpacity(0.15),
-                  Colors.transparent,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Image.network(
-              mmr.rankIconUrl,
-              width: 56,
-              height: 56,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.military_tech_rounded,
-                size: 40,
-                color: UIConstants.fireYellow,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-
-          // Rank Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  mmr.currentTierPatched,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    // RR Points
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: UIConstants.fireOrange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: UIConstants.fireOrange.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        '${mmr.rankingInTier} RR',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: UIConstants.fireOrange,
-                        ),
-                      ),
-                    ),
-                    if (mmr.mmrChangeToLastGame != null) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        mmr.mmrChangeToLastGame! >= 0
-                            ? '+${mmr.mmrChangeToLastGame}'
-                            : '${mmr.mmrChangeToLastGame}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: mmr.mmrChangeToLastGame! >= 0
-                              ? UIConstants.accentGreen
-                              : UIConstants.fireRed,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                // Peak Rank
-                if (mmr.peakTierPatched != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.emoji_events_rounded,
-                        size: 14,
-                        color: UIConstants.fireYellow.withOpacity(0.7),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Peak: ${mmr.peakTierPatched}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white.withOpacity(0.5),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (mmr.peakSeason != null) ...[
-                        Text(
-                          ' (${mmr.peakSeason})',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.white.withOpacity(0.35),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatsGrid(ValorantPlayerStats stats) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatBox(
-              label: 'Win Rate',
-              value: '${stats.winRate.toStringAsFixed(1)}%',
-              icon: Icons.trending_up_rounded,
-              gradient: [UIConstants.accentGreen, UIConstants.accentGreen.withOpacity(0.7)],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _StatBox(
-              label: 'K/D/A',
-              value: stats.avgKda.toStringAsFixed(2),
-              icon: Icons.gps_fixed_rounded,
-              gradient: [UIConstants.fireOrange, UIConstants.fireRed],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _StatBox(
-              label: 'HS%',
-              value: '${stats.avgHeadshotPercent.toStringAsFixed(1)}%',
-              icon: Icons.sports_mma_rounded,
-              gradient: [UIConstants.fireYellow, UIConstants.fireOrange],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _StatBox(
-              label: 'Maç',
-              value: '${stats.totalMatches}',
-              icon: Icons.sports_esports_rounded,
-              gradient: [UIConstants.accentPurple, UIConstants.accentPurple.withOpacity(0.7)],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMostPlayedSection(ValorantPlayerStats stats) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: UIConstants.bgTertiary.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.05),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          if (stats.mostPlayedAgent != null) ...[
-            Expanded(
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          UIConstants.fireOrange.withOpacity(0.2),
-                          UIConstants.fireRed.withOpacity(0.1),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.person_rounded,
-                      size: 18,
-                      color: UIConstants.fireOrange,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Favori Ajan',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.white.withOpacity(0.4),
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        Text(
-                          stats.mostPlayedAgent!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (stats.mostPlayedAgent != null && stats.mostPlayedMap != null)
-            Container(
-              width: 1,
-              height: 32,
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              color: Colors.white.withOpacity(0.1),
-            ),
-          if (stats.mostPlayedMap != null) ...[
-            Expanded(
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          UIConstants.fireYellow.withOpacity(0.2),
-                          UIConstants.fireOrange.withOpacity(0.1),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.map_rounded,
-                      size: 18,
-                      color: UIConstants.fireYellow,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Favori Harita',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.white.withOpacity(0.4),
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        Text(
-                          stats.mostPlayedMap!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Individual stat box for the stats grid
-class _StatBox extends StatelessWidget {
-  const _StatBox({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.gradient,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final List<Color> gradient;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: UIConstants.bgTertiary.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: gradient[0].withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: gradient),
-              borderRadius: BorderRadius.circular(7),
-              boxShadow: [
-                BoxShadow(
-                  color: gradient[0].withOpacity(0.3),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: Colors.white, size: 14),
-          ),
-          const SizedBox(height: 8),
-          ShaderMask(
-            shaderCallback: (bounds) => LinearGradient(colors: gradient).createShader(bounds),
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
             style: TextStyle(
-              fontSize: 10,
-              color: Colors.white.withOpacity(0.45),
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+/// Main Valorant stats card with premium fire theme design
+class _ValorantStatsCard extends StatelessWidget {
+  const _ValorantStatsCard({required this.profile});
+
+  final ValorantProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final account = profile.account;
+    final mmr = profile.mmr;
+    final stats = profile.stats;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: UIConstants.fireOrange.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: UIConstants.fireOrange.withOpacity(0.2),
+            blurRadius: 32,
+            offset: const Offset(0, 8),
+            spreadRadius: -4,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(19),
+        child: Stack(
+          children: [
+            // Base dark background
+            Positioned.fill(
+              child: Container(color: UIConstants.fireDarkBg),
+            ),
+
+            // Fire gradient atmosphere
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.8, -1.2),
+                    radius: 1.8,
+                    colors: [
+                      UIConstants.fireOrange.withOpacity(0.15),
+                      UIConstants.fireRed.withOpacity(0.08),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.4, 1.0],
+                  ),
+                ),
+              ),
+            ),
+
+            // Bottom heat glow
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0.5, 1.5),
+                    radius: 1.2,
+                    colors: [
+                      UIConstants.fireRed.withOpacity(0.12),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Content
+            Column(
+              children: [
+                // Hero Section with Player Card accent
+                _buildHeroSection(account, mmr),
+
+                // Stats Bar
+                if (stats != null) _buildStatsBar(stats),
+
+                // Footer
+                if (stats?.mostPlayedAgent != null || stats?.mostPlayedMap != null)
+                  _buildFooter(stats!),
+              ],
+            ),
+
+            // Top fire accent line
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 2,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      UIConstants.fireYellow.withOpacity(0.8),
+                      UIConstants.fireOrange,
+                      UIConstants.fireRed.withOpacity(0.8),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroSection(ValorantAccount account, ValorantMMR? mmr) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Rank Display with player card accent
+          if (mmr != null) _buildRankColumn(mmr, account.cardUrl),
+
+          const SizedBox(width: 16),
+
+          // Player Info
+          Expanded(child: _buildPlayerColumn(account, mmr)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRankColumn(ValorantMMR mmr, String? cardUrl) {
+    return Container(
+      width: 96,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: UIConstants.fireOrange.withOpacity(0.2),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: UIConstants.fireOrange.withOpacity(0.1),
+            blurRadius: 16,
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Stack(
+          children: [
+            // Player card as subtle background
+            if (cardUrl != null)
+              Positioned.fill(
+                child: Image.network(
+                  cardUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: UIConstants.bgSecondary,
+                  ),
+                ),
+              ),
+
+            // Dark overlay for readability
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      UIConstants.fireDarkBg.withOpacity(0.7),
+                      UIConstants.fireDarkBg.withOpacity(0.85),
+                      UIConstants.fireDarkBg.withOpacity(0.95),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Fire tint overlay
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      UIConstants.fireOrange.withOpacity(0.1),
+                      UIConstants.fireRed.withOpacity(0.05),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Rank content
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  // Rank Icon
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: UIConstants.fireOrange.withOpacity(0.4),
+                          blurRadius: 20,
+                          spreadRadius: -2,
+                        ),
+                      ],
+                    ),
+                    child: Image.network(
+                      mmr.rankIconUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.military_tech_rounded,
+                        size: 40,
+                        color: UIConstants.fireOrange,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // RR Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          UIConstants.fireOrange,
+                          UIConstants.fireRed,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: UIConstants.fireOrange.withOpacity(0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      '${mmr.rankingInTier} RR',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayerColumn(ValorantAccount account, ValorantMMR? mmr) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Valorant + Level badges row
+        Row(
+          children: [
+            // Valorant badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    UIConstants.fireOrange.withOpacity(0.2),
+                    UIConstants.fireRed.withOpacity(0.1),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: UIConstants.fireOrange.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ValorantIcon(size: 11, color: UIConstants.fireOrange),
+                  const SizedBox(width: 5),
+                  Text(
+                    'VALORANT',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: UIConstants.fireOrange,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Level badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: UIConstants.bgTertiary.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 10,
+                    color: UIConstants.fireYellow,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${account.accountLevel ?? 0}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 14),
+
+        // Player Name with fire gradient
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [Colors.white, Colors.white.withOpacity(0.9)],
+          ).createShader(bounds),
+          child: Text(
+            account.name,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: -0.5,
+              height: 1.1,
+            ),
+          ),
+        ),
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [UIConstants.fireYellow, UIConstants.fireOrange],
+          ).createShader(bounds),
+          child: Text(
+            '#${account.tag}',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Rank Name
+        if (mmr != null) ...[
+          Text(
+            mmr.currentTierPatched.toUpperCase(),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Colors.white.withOpacity(0.9),
+              letterSpacing: 1.5,
+            ),
+          ),
+          if (mmr.peakTierPatched != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  Icons.emoji_events_rounded,
+                  size: 13,
+                  color: UIConstants.fireYellow,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  'Peak: ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withOpacity(0.4),
+                  ),
+                ),
+                Text(
+                  mmr.peakTierPatched!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+                if (mmr.peakSeason != null)
+                  Text(
+                    ' · ${mmr.peakSeason}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white.withOpacity(0.3),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStatsBar(ValorantPlayerStats stats) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: BoxDecoration(
+        color: UIConstants.bgSecondary.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: UIConstants.fireOrange.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          _buildStatCell(
+            value: '${stats.winRate.toStringAsFixed(1)}%',
+            label: 'WIN',
+            color: UIConstants.accentGreen,
+          ),
+          _buildDivider(),
+          _buildStatCell(
+            value: stats.avgKda.toStringAsFixed(2),
+            label: 'KDA',
+            color: UIConstants.fireOrange,
+          ),
+          _buildDivider(),
+          _buildStatCell(
+            value: '${stats.avgHeadshotPercent.toStringAsFixed(1)}%',
+            label: 'HS',
+            color: UIConstants.fireYellow,
+          ),
+          _buildDivider(),
+          _buildStatCell(
+            value: _formatCount(stats.totalMatches),
+            label: 'GAMES',
+            color: UIConstants.accentPurple,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCell({
+    required String value,
+    required String label,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withOpacity(0.35),
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Container(
+      width: 1,
+      height: 28,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      color: Colors.white.withOpacity(0.06),
+    );
+  }
+
+  Widget _buildFooter(ValorantPlayerStats stats) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          if (stats.mostPlayedAgent != null)
+            Expanded(
+              child: _buildFooterCell(
+                icon: Icons.person_rounded,
+                label: 'MAIN',
+                value: stats.mostPlayedAgent!,
+                color: UIConstants.fireOrange,
+              ),
+            ),
+          if (stats.mostPlayedAgent != null && stats.mostPlayedMap != null)
+            const SizedBox(width: 12),
+          if (stats.mostPlayedMap != null)
+            Expanded(
+              child: _buildFooterCell(
+                icon: Icons.map_rounded,
+                label: 'MAP',
+                value: stats.mostPlayedMap!,
+                color: UIConstants.fireYellow,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooterCell({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.15),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withOpacity(0.35),
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatCount(int count) {
+    if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return count.toString();
   }
 }
